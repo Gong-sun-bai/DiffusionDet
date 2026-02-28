@@ -1,0 +1,43 @@
+_BASE_: "Base-DiffusionDet.yaml" # 继承基础配置
+
+MODEL:
+  # 骨干网络配置：使用 MobileNetV4-Medium + FPN
+  BACKBONE:
+    NAME: "build_mobilenetv4_fpn_backbone"
+  
+  # MobileNetV4 配置
+  MOBILENETV4:
+    SIZE: "medium"  # 中等尺寸模型，平衡性能与速度
+    OUT_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    NORM: "BN"
+    WIDTH_MULTIPLIER: 1.0
+  
+  # FPN 配置
+  FPN:
+    IN_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    OUT_CHANNELS: 96  # Medium 模型通道数稍大
+  
+  # ROI 配置
+  ROI_HEADS:
+    IN_FEATURES: ["p2", "p3", "p4", "p5"]
+  
+  # DiffusionDet 配置
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 1
+    HIDDEN_DIM: 96  # 适当增大隐藏层维度
+
+DATASETS:
+  TRAIN: ("sar_ship_train",)
+  TEST: ("sar_ship_val",)
+
+SOLVER:
+  MAX_ITER: 119280
+  CHECKPOINT_PERIOD: 10000
+  STEPS: (69580, 89514)
+
+INPUT:
+  CROP:
+    ENABLED: True
+
+OUTPUT_DIR: "./output_mobilenetv4_medium"

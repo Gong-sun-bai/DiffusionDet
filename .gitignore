@@ -5,9 +5,6 @@ instant_test_output
 inference_test_output
 
 
-*.json
-*.diff
-
 # compilation and distribution
 __pycache__
 _ext
@@ -21,6 +18,14 @@ wheels/
 
 # pytorch/python/numpy formats
 *.pth
+*.pt
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+*.engine
+*.torchscript
+*.tflite
 *.pkl
 *.npy
 
@@ -40,8 +45,26 @@ wheels/
 _darcs
 
 # project dirs
-/detectron2/model_zoo/configs
 /datasets/*
 !/datasets/*.*
 /projects/*/datasets
 
+# Datasets / large artifacts (repo-specific)
+panda_coco_data/
+SAR_COCO_ship/
+
+# Experiment tracking / caches
+wandb/
+mlruns/
+lightning_logs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Archives (dataset/weights downloads)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z

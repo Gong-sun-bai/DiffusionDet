@@ -5,6 +5,7 @@
 # Contact: {sunpeize, cxrfzhang}@foxmail.com
 #
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+
 """
 DiffusionDet Training Script.
 
@@ -32,10 +33,18 @@ from detectron2.evaluation import COCOEvaluator, LVISEvaluator, verify_results
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.modeling import build_model
 
-from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, DiffusionDetWithTTA
+from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, DiffusionDetWithTTA, add_mobilenetv4_config
 from diffusiondet.util.model_ema import add_model_ema_configs, may_build_model_ema, may_get_ema_checkpointer, EMAHook, \
     apply_model_ema_and_restore, EMADetectionCheckpointer
 
+from detectron2.data.datasets import register_coco_instances
+
+# 1. 名字一定要改，不要用 "coco_2017_train"
+#register_coco_instances("sar_ship_train", {}, "SAR_COCO/annotations/instances_train2017.json", "SAR_COCO/train2017")
+#register_coco_instances("sar_ship_val", {}, "SAR_COCO/annotations/instances_val2017.json", "SAR_COCO/val2017")
+
+register_coco_instances("panda_yolo_train", {}, "panda_coco_data/annotations/instances_train2017.json", "panda_coco_data/train2017")
+register_coco_instances("panda_yolo_val", {}, "panda_coco_data/annotations/instances_val2017.json", "panda_coco_data/val2017")
 
 class Trainer(DefaultTrainer):
     """ Extension of the Trainer class adapted to DiffusionDet. """
@@ -252,6 +261,7 @@ def setup(args):
     """
     cfg = get_cfg()
     add_diffusiondet_config(cfg)
+    add_mobilenetv4_config(cfg)  # 添加 MobileNetV4 配置
     add_model_ema_configs(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)

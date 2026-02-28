@@ -10,3 +10,9 @@ from .detector import DiffusionDet
 from .dataset_mapper import DiffusionDetDatasetMapper
 from .test_time_augmentation import DiffusionDetWithTTA
 from .swintransformer import build_swintransformer_fpn_backbone
+from .mobilenetv4 import (
+    MobileNetV4,
+    build_mobilenetv4_backbone,
+    build_mobilenetv4_fpn_backbone,
+    add_mobilenetv4_config,
+)

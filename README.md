@@ -45,3 +45,10 @@ If you use DiffusionDet in your research or wish to refer to the baseline result
       year={2022}
 }
 ```
+
+python train_net.py --num-gpus 1 \
+    --config-file configs/panda_coco_data.yaml --resume
+
+python train_net.py --num-gpus 1 \
+    --config-file configs/diffdet.SAR_coco.res50.yaml \
+    --eval-only MODEL.WEIGHTS output/inference/instances_predictions.pth
