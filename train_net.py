@@ -15,6 +15,7 @@ This script is a simplified version of the training script in detectron2/tools.
 import os
 import itertools
 import weakref
+from pathlib import Path
 from typing import Any, Dict, List, Set
 import logging
 from collections import OrderedDict
@@ -36,15 +37,12 @@ from detectron2.modeling import build_model
 from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, DiffusionDetWithTTA, add_mobilenetv4_config
 from diffusiondet.util.model_ema import add_model_ema_configs, may_build_model_ema, may_get_ema_checkpointer, EMAHook, \
     apply_model_ema_and_restore, EMADetectionCheckpointer
-
-from detectron2.data.datasets import register_coco_instances
-
-# 1. 名字一定要改，不要用 "coco_2017_train"
-#register_coco_instances("sar_ship_train", {}, "SAR_COCO/annotations/instances_train2017.json", "SAR_COCO/train2017")
-#register_coco_instances("sar_ship_val", {}, "SAR_COCO/annotations/instances_val2017.json", "SAR_COCO/val2017")
-
-register_coco_instances("panda_yolo_train", {}, "panda_coco_data/annotations/instances_train2017.json", "panda_coco_data/train2017")
-register_coco_instances("panda_yolo_val", {}, "panda_coco_data/annotations/instances_val2017.json", "panda_coco_data/val2017")
+from diffusiondet.datasets import register_project_datasets
+from experiment_manager import (
+    configure_experiment,
+    finish_experiment,
+    initialize_experiment,
+)
 
 class Trainer(DefaultTrainer):
     """ Extension of the Trainer class adapted to DiffusionDet. """
@@ -259,39 +257,68 @@ def setup(args):
     """
     Create configs and perform basic setups.
     """
+    repository_root = Path(__file__).resolve().parent
+    register_project_datasets(repository_root)
     cfg = get_cfg()
     add_diffusiondet_config(cfg)
     add_mobilenetv4_config(cfg)  # 添加 MobileNetV4 配置
     add_model_ema_configs(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
+    context = configure_experiment(cfg, args, repository_root)
+    cfg.OUTPUT_DIR = str(context.output_dir)
+    if context.mode == "evaluation" and "://" not in cfg.MODEL.WEIGHTS:
+        weights = Path(cfg.MODEL.WEIGHTS).expanduser()
+        if not weights.is_absolute():
+            weights = repository_root / weights
+        cfg.MODEL.WEIGHTS = str(weights.resolve())
     cfg.freeze()
-    default_setup(cfg, args)
-    return cfg
+    if comm.is_main_process():
+        initialize_experiment(context, cfg)
+    comm.synchronize()
+    try:
+        default_setup(cfg, args)
+    except BaseException as error:
+        if comm.is_main_process():
+            finish_experiment(context, error=error)
+        raise
+    return cfg, context
 
 
 def main(args):
-    cfg = setup(args)
+    context = None
+    try:
+        cfg, context = setup(args)
 
-    if args.eval_only:
-        model = Trainer.build_model(cfg)
-        kwargs = may_get_ema_checkpointer(cfg, model)
-        if cfg.MODEL_EMA.ENABLED:
-            EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.MODEL.WEIGHTS,
-                                                                                              resume=args.resume)
-        else:
-            DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.MODEL.WEIGHTS,
-                                                                                           resume=args.resume)
-        res = Trainer.ema_test(cfg, model)
-        if cfg.TEST.AUG.ENABLED:
-            res.update(Trainer.test_with_TTA(cfg, model))
+        if args.eval_only:
+            model = Trainer.build_model(cfg)
+            kwargs = may_get_ema_checkpointer(cfg, model)
+            if cfg.MODEL_EMA.ENABLED:
+                EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(
+                    cfg.MODEL.WEIGHTS, resume=False
+                )
+            else:
+                DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(
+                    cfg.MODEL.WEIGHTS, resume=False
+                )
+            results = Trainer.ema_test(cfg, model)
+            if cfg.TEST.AUG.ENABLED:
+                results.update(Trainer.test_with_TTA(cfg, model))
+            if comm.is_main_process():
+                verify_results(cfg, results)
+                finish_experiment(context, results=results)
+            return results
+
+        trainer = Trainer(cfg)
+        trainer.resume_or_load(resume=args.resume)
+        results = trainer.train()
         if comm.is_main_process():
-            verify_results(cfg, res)
-        return res
-
-    trainer = Trainer(cfg)
-    trainer.resume_or_load(resume=args.resume)
-    return trainer.train()
+            finish_experiment(context, results=results)
+        return results
+    except BaseException as error:
+        if context is not None and comm.is_main_process():
+            finish_experiment(context, error=error)
+        raise
 
 
 if __name__ == "__main__":

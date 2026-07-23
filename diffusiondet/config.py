@@ -64,11 +64,25 @@ def add_diffusiondet_config(cfg):
     cfg.SOLVER.OPTIMIZER = "ADAMW"
     cfg.SOLVER.BACKBONE_MULTIPLIER = 1.0
 
+    # Project experiment metadata. Every config launched through train_net.py
+    # must override the blank identifiers below.
+    cfg.EXPERIMENT = CN()
+    cfg.EXPERIMENT.ID = ""
+    cfg.EXPERIMENT.NAME = ""
+    cfg.EXPERIMENT.DATASET = ""
+    cfg.EXPERIMENT.TRACK = ""
+    cfg.EXPERIMENT.KIND = ""
+    cfg.EXPERIMENT.BASELINE = ""
+    cfg.EXPERIMENT.PURPOSE = ""
+    cfg.EXPERIMENT.HYPOTHESIS = ""
+    cfg.EXPERIMENT.CHANGES = []
+    cfg.EXPERIMENT.OUTPUT_ROOT = "./runs"
+
     # TTA.
     cfg.TEST.AUG.MIN_SIZES = (400, 500, 600, 640, 700, 900, 1000, 1100, 1200, 1300, 1400, 1800, 800)
     cfg.TEST.AUG.CVPODS_TTA = True
     cfg.TEST.AUG.SCALE_FILTER = True
-    cfg.TEST.AUG.SCALE_RANGES = ([96, 10000], [96, 10000], 
+    cfg.TEST.AUG.SCALE_RANGES = ([96, 10000], [96, 10000],
                                  [64, 10000], [64, 10000],
                                  [64, 10000], [0, 10000],
                                  [0, 10000], [0, 256],

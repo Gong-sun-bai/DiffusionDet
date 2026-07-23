@@ -1,0 +1,43 @@
+_BASE_: "../../Base-DiffusionDet.yaml"
+
+# 历史只读配置：原 output_2，当前最高 AP 方向性参考。
+EXPERIMENT:
+  ID: "sar-001"
+  NAME: "r18-fpn128-h128-bs16-it397288-scratch"
+  DATASET: "sar_ship"
+  TRACK: "accuracy"
+  KIND: "historical"
+  BASELINE: "sar-000"
+  PURPOSE: "记录 ResNet-18 与 128 通道压缩的历史结果"
+  HYPOTHESIS: "较小骨干和检测头可减少参数并保持 SAR 精度"
+  CHANGES:
+    - "MODEL.RESNETS.DEPTH: 50 -> 18"
+    - "MODEL.FPN.OUT_CHANNELS: 256 -> 128"
+    - "MODEL.DiffusionDet.HIDDEN_DIM: 256 -> 128"
+    - "MODEL.WEIGHTS: ImageNet -> scratch"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  WEIGHTS: ""
+  RESNETS:
+    DEPTH: 18
+    STRIDE_IN_1X1: False
+    RES2_OUT_CHANNELS: 64
+  FPN:
+    OUT_CHANNELS: 128
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 1
+    HIDDEN_DIM: 128
+
+DATASETS:
+  TRAIN: ("sar_ship_train",)
+  TEST: ("sar_ship_val",)
+
+SEED: -1
+SOLVER:
+  IMS_PER_BATCH: 16
+  MAX_ITER: 397288
+  CHECKPOINT_PERIOD: 5000
+  STEPS: (278102, 357559)
+

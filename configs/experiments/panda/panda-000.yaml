@@ -1,0 +1,38 @@
+_BASE_: "../../Base-DiffusionDet.yaml"
+
+# 历史只读配置：原 output；PANDA 四类别结果不可与 SAR 横向比较。
+EXPERIMENT:
+  ID: "panda-000"
+  NAME: "r50-fpn256-h256-bs16-it49063-pretrain"
+  DATASET: "panda"
+  TRACK: "accuracy"
+  KIND: "historical"
+  BASELINE: ""
+  PURPOSE: "保存 PANDA 四类别检测历史基线"
+  HYPOTHESIS: "ResNet-50 DiffusionDet 可建立 PANDA 四类别参考结果"
+  CHANGES: []
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
+  RESNETS:
+    DEPTH: 50
+    STRIDE_IN_1X1: False
+    RES2_OUT_CHANNELS: 256
+  FPN:
+    OUT_CHANNELS: 256
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 4
+    HIDDEN_DIM: 256
+
+DATASETS:
+  TRAIN: ("panda_yolo_train",)
+  TEST: ("panda_yolo_val",)
+
+SEED: -1
+SOLVER:
+  IMS_PER_BATCH: 16
+  MAX_ITER: 49063
+  CHECKPOINT_PERIOD: 5000
+  STEPS: (34344, 44157)

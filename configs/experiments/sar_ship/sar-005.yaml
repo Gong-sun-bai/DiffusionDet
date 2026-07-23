@@ -1,0 +1,38 @@
+_BASE_: "../../Base-DiffusionDet.yaml"
+
+EXPERIMENT:
+  ID: "sar-005"
+  NAME: "r18-fpn128-h128-bs16-it397288-scratch-seed40244023"
+  DATASET: "sar_ship"
+  TRACK: "accuracy"
+  KIND: "baseline"
+  BASELINE: ""
+  PURPOSE: "建立固定随机种子的可重复 SAR 精度基线"
+  HYPOTHESIS: "固定种子后应复现历史 R18-128 的方向性优势"
+  CHANGES: []
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  WEIGHTS: ""
+  RESNETS:
+    DEPTH: 18
+    STRIDE_IN_1X1: False
+    RES2_OUT_CHANNELS: 64
+  FPN:
+    OUT_CHANNELS: 128
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 1
+    HIDDEN_DIM: 128
+
+DATASETS:
+  TRAIN: ("sar_ship_train",)
+  TEST: ("sar_ship_val",)
+
+SEED: 40244023
+SOLVER:
+  IMS_PER_BATCH: 16
+  MAX_ITER: 397288
+  CHECKPOINT_PERIOD: 5000
+  STEPS: (278102, 357559)
+

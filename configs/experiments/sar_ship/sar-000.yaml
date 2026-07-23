@@ -1,0 +1,39 @@
+_BASE_: "../../Base-DiffusionDet.yaml"
+
+# 历史只读配置：原 output_1。只能显式指定 model_final.pth 评估。
+EXPERIMENT:
+  ID: "sar-000"
+  NAME: "r50-fpn256-h256-bs16-it397288-pretrain"
+  DATASET: "sar_ship"
+  TRACK: "accuracy"
+  KIND: "historical"
+  BASELINE: ""
+  PURPOSE: "保存 SAR ResNet-50 大模型历史基线"
+  HYPOTHESIS: "较大的预训练骨干可建立 SAR 精度参考"
+  CHANGES: []
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
+  RESNETS:
+    DEPTH: 50
+    STRIDE_IN_1X1: False
+    RES2_OUT_CHANNELS: 256
+  FPN:
+    OUT_CHANNELS: 256
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 1
+    HIDDEN_DIM: 256
+
+DATASETS:
+  TRAIN: ("sar_ship_train",)
+  TEST: ("sar_ship_val",)
+
+SEED: -1
+SOLVER:
+  IMS_PER_BATCH: 16
+  MAX_ITER: 397288
+  CHECKPOINT_PERIOD: 5000
+  STEPS: (278102, 357559)
+

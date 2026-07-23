@@ -1,0 +1,48 @@
+_BASE_: "../../Base-DiffusionDet.yaml"
+
+# 历史只读配置：原 output_mobilenetv4_medium；延长训练后未同步 milestones。
+EXPERIMENT:
+  ID: "sar-004"
+  NAME: "mnv4-medium-fpn96-h96-bs50-it119280-scratch"
+  DATASET: "sar_ship"
+  TRACK: "efficiency"
+  KIND: "historical"
+  BASELINE: "sar-003"
+  PURPOSE: "记录 MobileNetV4-Medium 的历史精度与体量权衡"
+  HYPOTHESIS: "中型移动骨干可用适度参数换取更高精度"
+  CHANGES:
+    - "MODEL.MOBILENETV4.SIZE: small -> medium"
+    - "MODEL.FPN.OUT_CHANNELS: 64 -> 96"
+    - "MODEL.DiffusionDet.HIDDEN_DIM: 64 -> 96"
+    - "SOLVER.IMS_PER_BATCH: 64 -> 50"
+    - "SOLVER.MAX_ITER: 99400 -> 119280"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  WEIGHTS: ""
+  BACKBONE:
+    NAME: "build_mobilenetv4_fpn_backbone"
+  MOBILENETV4:
+    SIZE: "medium"
+    OUT_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    NORM: "BN"
+    WIDTH_MULTIPLIER: 1.0
+  FPN:
+    IN_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    OUT_CHANNELS: 96
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 1
+    HIDDEN_DIM: 96
+
+DATASETS:
+  TRAIN: ("sar_ship_train",)
+  TEST: ("sar_ship_val",)
+
+SEED: -1
+SOLVER:
+  IMS_PER_BATCH: 50
+  MAX_ITER: 119280
+  CHECKPOINT_PERIOD: 10000
+  STEPS: (69580, 89514)
+

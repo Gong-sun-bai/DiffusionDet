@@ -1,0 +1,46 @@
+_BASE_: "../../Base-DiffusionDet.yaml"
+
+# 历史只读配置：原 output_mobilenetv4_small。
+EXPERIMENT:
+  ID: "sar-003"
+  NAME: "mnv4-small-fpn64-h64-bs64-it99400-scratch"
+  DATASET: "sar_ship"
+  TRACK: "efficiency"
+  KIND: "historical"
+  BASELINE: "sar-000"
+  PURPOSE: "记录 MobileNetV4-Small 的历史轻量化结果"
+  HYPOTHESIS: "移动端骨干可显著减少检测模型参数"
+  CHANGES:
+    - "MODEL.BACKBONE.NAME: build_resnet_fpn_backbone -> build_mobilenetv4_fpn_backbone"
+    - "MODEL.FPN.OUT_CHANNELS: 256 -> 64"
+    - "MODEL.DiffusionDet.HIDDEN_DIM: 256 -> 64"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  WEIGHTS: ""
+  BACKBONE:
+    NAME: "build_mobilenetv4_fpn_backbone"
+  MOBILENETV4:
+    SIZE: "small"
+    OUT_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    NORM: "BN"
+    WIDTH_MULTIPLIER: 1.0
+  FPN:
+    IN_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    OUT_CHANNELS: 64
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 1
+    HIDDEN_DIM: 64
+
+DATASETS:
+  TRAIN: ("sar_ship_train",)
+  TEST: ("sar_ship_val",)
+
+SEED: -1
+SOLVER:
+  IMS_PER_BATCH: 64
+  MAX_ITER: 99400
+  CHECKPOINT_PERIOD: 5000
+  STEPS: (69580, 89514)
+

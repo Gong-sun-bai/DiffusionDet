@@ -1,43 +1,43 @@
+# DiffusionDet 公共模型与输入默认值。
+# 本地实验必须在 configs/experiments/ 中覆盖数据集、训练计划和 EXPERIMENT 元数据。
 MODEL:
-  META_ARCHITECTURE: "DiffusionDet" # 模型架构名称
-  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl" #空表示不加载预训练权重，默认detectron2://ImageNetPretrained/torchvision/R-50.pkl
-  # 针对 SAR 图像，若要极致精度，这里的均值和标准差建议根据 SAR 数据集重新计算
-  PIXEL_MEAN: [123.675, 116.280, 103.530] 
+  META_ARCHITECTURE: "DiffusionDet"
+  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
+  PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
   BACKBONE:
-    NAME: "build_resnet_fpn_backbone" # 使用 FPN 结构的 ResNet，有利于检测小目标
+    NAME: "build_resnet_fpn_backbone"
   RESNETS:
-    OUT_FEATURES: ["res2", "res3", "res4", "res5"] # 提取多层特征
+    OUT_FEATURES: ["res2", "res3", "res4", "res5"]
   FPN:
     IN_FEATURES: ["res2", "res3", "res4", "res5"]
-    #OUT_CHANNELS: 64           # FPN 输出通道数，修改此项可减小模型大小，默认直接删
   ROI_HEADS:
-    IN_FEATURES: ["p2", "p3", "p4", "p5"] # FPN 输出的特征层
+    IN_FEATURES: ["p2", "p3", "p4", "p5"]
   ROI_BOX_HEAD:
-    POOLER_TYPE: "ROIAlignV2" # 经典的 RoI 对齐操作
+    POOLER_TYPE: "ROIAlignV2"
     POOLER_RESOLUTION: 7
     POOLER_SAMPLING_RATIO: 2
-    # NUM_FC: 2       # 修改全连接层数量，默认直接删除
-    # FC_DIM: 256     # 修改全连接层维度，默认直接删除
+
 SOLVER:
-  IMS_PER_BATCH: 16  # 【修改处：根据你的要求改为 32】
-  BASE_LR: 0.000025      # 初始学习率
-  STEPS: (210000, 250000) # 学习率下降的步数
-  MAX_ITER: 270000       # 最大迭代次数
-  WARMUP_FACTOR: 0.01    # 预热倍率
-  WARMUP_ITERS: 1000     # 预热前 1000 步，防止梯度爆炸
-  OPTIMIZER: "ADAMW"     # 扩散模型常用 ADAMW 优化器
-  CLIP_GRADIENTS:        # 梯度裁剪，保证训练稳定
+  IMS_PER_BATCH: 16
+  BASE_LR: 0.000025
+  STEPS: (210000, 250000)
+  MAX_ITER: 270000
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 1000
+  OPTIMIZER: "ADAMW"
+  CLIP_GRADIENTS:
     ENABLED: True
     CLIP_TYPE: "full_model"
     CLIP_VALUE: 1.0
+
 INPUT:
-  # 【修改处：根据你的要求改为 256】
-  MIN_SIZE_TRAIN: (256,384,512,640,768,896,1024) 
+  MIN_SIZE_TRAIN: (256, 384, 512, 640, 768, 896, 1024)
   MAX_SIZE_TRAIN: 1024
   MIN_SIZE_TEST: 256
   MAX_SIZE_TEST: 1024
   CROP:
-    ENABLED: True       # SAR 数据集通常较小，建议开启 CROP 或进行随机旋转,默认False
+    ENABLED: True
   FORMAT: "RGB"
+
 VERSION: 2
