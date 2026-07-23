@@ -1,22 +1,31 @@
-# output dir
-output
-output*
-instant_test_output
-inference_test_output
+# Training, evaluation, and visualization outputs (repository root only)
+/output/
+/output_*/
+/instant_test_output/
+/inference_test_output/
+/runs/
+/tensorboard/
 
-
-# compilation and distribution
-__pycache__
-_ext
-*.pyc
+# Python bytecode, native extensions, and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+_ext/
 *.pyd
 *.so
-detectron2.egg-info/
+*.egg-info/
 build/
 dist/
 wheels/
 
-# pytorch/python/numpy formats
+# Local Python/Conda environments
+.venv/
+venv/
+env/
+.conda/
+.python-version
+
+# Model checkpoints and generated binary data
 *.pth
 *.pt
 *.ckpt
@@ -29,40 +38,52 @@ wheels/
 *.pkl
 *.npy
 
-# ipython/jupyter notebooks
-*.ipynb
+# Jupyter runtime files; notebooks themselves may be committed
 **/.ipynb_checkpoints/
 
-# Editor temporaries
+# Editor, OS, and temporary files
 *.swn
 *.swo
 *.swp
 *~
+.idea/
+.vscode/
+_darcs/
+.DS_Store
+Thumbs.db
 
-# editor settings
-.idea
-.vscode
-_darcs
-
-# project dirs
+# Upstream/local dataset locations
 /datasets/*
 !/datasets/*.*
-/projects/*/datasets
+/projects/*/datasets/
 
-# Datasets / large artifacts (repo-specific)
-panda_coco_data/
-SAR_COCO_ship/
+# Repository-specific datasets and downloaded pretrained weights
+/panda_coco_data/
+/SAR_COCO_ship/
+/SAR_COCO/
+/ship_dataset_v0/
+/lwb_models/
 
-# Experiment tracking / caches
-wandb/
-mlruns/
-lightning_logs/
+# Experiment tracking, test output, and caches
+/wandb/
+/mlruns/
+/lightning_logs/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .cache/
+.coverage
+coverage.xml
+htmlcov/
 
-# Archives (dataset/weights downloads)
+# Local secrets; keep an intentionally sanitized example if one is added
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Downloaded archives
 *.zip
 *.tar
 *.tar.gz
