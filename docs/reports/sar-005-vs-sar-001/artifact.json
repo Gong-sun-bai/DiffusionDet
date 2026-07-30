@@ -1,0 +1,994 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "SAR-005 与 SAR-001 训练结果诊断",
+    "description": "判断 sar-005 的精度下降来自未收敛、配置漂移还是随机性，并给出可验证的下一步。",
+    "generatedAt": "2026-07-30T15:54:43+08:00",
+    "cards": [
+      {
+        "id": "card-ap",
+        "description": "COCO bbox AP，0.50:0.95 IoU 平均。",
+        "dataset": "summary",
+        "sourceId": "final-metrics",
+        "metrics": [
+          {
+            "label": "sar-005 AP",
+            "field": "sar005_ap",
+            "format": "number"
+          },
+          {
+            "label": "较 sar-001（点）",
+            "field": "ap_delta",
+            "format": "number",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "card-ap75",
+        "description": "IoU=0.75 下的框定位精度。",
+        "dataset": "summary",
+        "sourceId": "final-metrics",
+        "metrics": [
+          {
+            "label": "sar-005 AP75",
+            "field": "sar005_ap75",
+            "format": "number"
+          },
+          {
+            "label": "较 sar-001（点）",
+            "field": "ap75_delta",
+            "format": "number",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "card-exposure",
+        "description": "全局 Batch × MAX_ITER ÷ 31,783 张训练图。",
+        "dataset": "summary",
+        "sourceId": "frozen-configs",
+        "metrics": [
+          {
+            "label": "sar-005 数据遍历",
+            "field": "sar005_epochs",
+            "format": "number"
+          },
+          {
+            "label": "sar-001 数据遍历",
+            "field": "sar001_epochs",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "card-late-loss",
+        "description": "最后 10% 训练进度内 JSON writer 记录的 total_loss 均值。",
+        "dataset": "summary",
+        "sourceId": "training-metrics",
+        "metrics": [
+          {
+            "label": "sar-005 后期 loss",
+            "field": "sar005_late_loss",
+            "format": "number"
+          },
+          {
+            "label": "相对 sar-001（%）",
+            "field": "late_loss_delta_pct",
+            "format": "number",
+            "signed": true
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "chart-ap-comparison",
+        "title": "最终 COCO bbox 指标对比",
+        "subtitle": "同一 SAR 验证集；数值单位为 AP 点",
+        "showDescription": true,
+        "intent": "comparison",
+        "question": "sar-005 的精度差距集中在哪些 IoU 和目标尺度指标？",
+        "rationale": "分组柱状图适合比较两个运行在六个同单位指标上的绝对差距。",
+        "comparisonContext": {
+          "baseline": "sar-001",
+          "denominator": "SAR 验证集 7,946 张图、10,230 个标注框",
+          "grain": "COCO bbox 指标",
+          "unit": "AP 点"
+        },
+        "type": "bar",
+        "dataset": "ap_comparison",
+        "sourceId": "final-metrics",
+        "encodings": {
+          "x": {
+            "field": "metric",
+            "type": "ordinal",
+            "label": "指标"
+          },
+          "y": {
+            "fields": [
+              "sar001",
+              "sar005"
+            ],
+            "type": "quantitative",
+            "label": "AP"
+          },
+          "tooltip": [
+            {
+              "field": "delta",
+              "type": "quantitative",
+              "label": "sar-005 - sar-001"
+            },
+            {
+              "field": "interpretation",
+              "type": "text",
+              "label": "口径"
+            }
+          ]
+        },
+        "xAxisTitle": "COCO bbox 指标",
+        "yAxisTitle": "AP 点",
+        "valueFormat": "number",
+        "unit": "AP 点",
+        "layout": "full",
+        "labels": {
+          "values": "all"
+        },
+        "legend": {
+          "position": "bottom",
+          "sort": "spec",
+          "title": "运行"
+        },
+        "palette": {
+          "kind": "categorical",
+          "name": "baseline-vs-reproduction"
+        },
+        "settings": {
+          "groupMode": "grouped",
+          "showValues": true,
+          "sort": "none"
+        },
+        "surface": {
+          "surface": "export",
+          "interactiveLegend": true,
+          "showControls": false,
+          "viewMode": "both"
+        }
+      },
+      {
+        "id": "chart-loss-progress",
+        "title": "按等比例训练进度对齐的 total_loss",
+        "subtitle": "每 5% 训练进度求均值；两次运行的样本暴露均约为 200 次数据集遍历",
+        "showDescription": true,
+        "intent": "trend",
+        "question": "sar-005 在训练末段是否仍处于明显下降、尚未收敛的状态？",
+        "rationale": "二十个有序进度点足以展示损失下降与末段平台，双折线可直接比较两次运行的优化轨迹。",
+        "comparisonContext": {
+          "baseline": "sar-001",
+          "denominator": "各自完整训练进度",
+          "grain": "5% 训练进度分箱",
+          "normalization": "按 MAX_ITER 百分比对齐",
+          "unit": "训练 total_loss"
+        },
+        "type": "line",
+        "dataset": "loss_progress",
+        "sourceId": "training-metrics",
+        "encodings": {
+          "x": {
+            "field": "progress_pct",
+            "type": "quantitative",
+            "label": "训练进度",
+            "unit": "%"
+          },
+          "y": {
+            "fields": [
+              "sar001_total_loss",
+              "sar005_total_loss"
+            ],
+            "type": "quantitative",
+            "label": "total_loss"
+          },
+          "tooltip": [
+            {
+              "field": "sar001_loss_ce",
+              "type": "quantitative",
+              "label": "sar-001 loss_ce"
+            },
+            {
+              "field": "sar005_loss_ce",
+              "type": "quantitative",
+              "label": "sar-005 loss_ce"
+            },
+            {
+              "field": "sar001_loss_bbox",
+              "type": "quantitative",
+              "label": "sar-001 loss_bbox"
+            },
+            {
+              "field": "sar005_loss_bbox",
+              "type": "quantitative",
+              "label": "sar-005 loss_bbox"
+            },
+            {
+              "field": "sar001_loss_giou",
+              "type": "quantitative",
+              "label": "sar-001 loss_giou"
+            },
+            {
+              "field": "sar005_loss_giou",
+              "type": "quantitative",
+              "label": "sar-005 loss_giou"
+            }
+          ]
+        },
+        "xAxisTitle": "训练进度（%）",
+        "yAxisTitle": "total_loss",
+        "valueFormat": "number",
+        "layout": "full",
+        "labels": {
+          "values": "endpoints"
+        },
+        "legend": {
+          "position": "bottom",
+          "sort": "spec",
+          "title": "运行"
+        },
+        "palette": {
+          "kind": "identity",
+          "name": "baseline-vs-reproduction"
+        },
+        "referenceLines": [
+          {
+            "axis": "x",
+            "color": "neutral",
+            "label": "第一次降 LR",
+            "lineStyle": "dashed",
+            "value": 70
+          },
+          {
+            "axis": "x",
+            "color": "neutral",
+            "label": "第二次降 LR",
+            "lineStyle": "dotted",
+            "value": 90
+          }
+        ],
+        "settings": {
+          "showPoints": "always",
+          "showLatestValue": true
+        },
+        "surface": {
+          "surface": "export",
+          "interactiveLegend": true,
+          "showControls": false,
+          "viewMode": "both"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "table-config-diff",
+        "title": "冻结配置中的实质差异",
+        "subtitle": "仅列出可能影响精度或实验身份的差异；模型结构键一致",
+        "showDescription": true,
+        "dataset": "config_diff",
+        "defaultSort": {
+          "field": "priority",
+          "direction": "desc"
+        },
+        "density": "spacious",
+        "sourceId": "frozen-configs",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "priority",
+            "label": "优先级",
+            "type": "number"
+          },
+          {
+            "field": "config_key",
+            "label": "配置项",
+            "type": "text"
+          },
+          {
+            "field": "sar001",
+            "label": "sar-001",
+            "type": "text"
+          },
+          {
+            "field": "sar005",
+            "label": "sar-005",
+            "type": "text"
+          },
+          {
+            "field": "diagnostic_effect",
+            "label": "诊断含义",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "final-metrics",
+        "label": "sar-001 与 sar-005 最终 metrics.json 评估记录",
+        "query": {
+          "engine": "DuckDB-compatible",
+          "sql": "WITH sar001 AS (SELECT * FROM read_json_auto('runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json', format='newline_delimited') WHERE \"bbox/AP\" IS NOT NULL ORDER BY iteration DESC LIMIT 1), sar005 AS (SELECT * FROM read_json_auto('runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json', format='newline_delimited') WHERE \"bbox/AP\" IS NOT NULL ORDER BY iteration DESC LIMIT 1) SELECT metric, sar001_value AS sar001, sar005_value AS sar005, sar005_value - sar001_value AS delta FROM (SELECT * FROM (VALUES ('AP', (SELECT \"bbox/AP\" FROM sar001), (SELECT \"bbox/AP\" FROM sar005)), ('AP50', (SELECT \"bbox/AP50\" FROM sar001), (SELECT \"bbox/AP50\" FROM sar005)), ('AP75', (SELECT \"bbox/AP75\" FROM sar001), (SELECT \"bbox/AP75\" FROM sar005)), ('APs', (SELECT \"bbox/APs\" FROM sar001), (SELECT \"bbox/APs\" FROM sar005)), ('APm', (SELECT \"bbox/APm\" FROM sar001), (SELECT \"bbox/APm\" FROM sar005)), ('APl', (SELECT \"bbox/APl\" FROM sar001), (SELECT \"bbox/APl\" FROM sar005))) AS metrics(metric, sar001_value, sar005_value));",
+          "description": "分别读取两个 metrics.json 中最后一条含 bbox/AP 的记录。",
+          "executed_at": "2026-07-30T15:54:43+08:00",
+          "language": "python",
+          "filters": [
+            "仅保留含 bbox/AP 的记录",
+            "每次运行取最后一条记录"
+          ],
+          "metric_definitions": [
+            "AP：COCO bbox AP，IoU 0.50:0.95 平均",
+            "AP50/AP75：固定 IoU 阈值下的 bbox AP",
+            "APs/APm/APl：COCO 小/中/大目标 bbox AP"
+          ],
+          "tables_used": [
+            "runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json",
+            "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json"
+          ]
+        }
+      },
+      {
+        "id": "training-metrics",
+        "label": "sar-001 与 sar-005 训练 metrics.json",
+        "query": {
+          "engine": "DuckDB-compatible",
+          "sql": "WITH raw AS (SELECT 'sar001' AS run, 397287.0 AS final_iter, * FROM read_json_auto('runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json', format='newline_delimited') UNION ALL BY NAME SELECT 'sar005' AS run, 254263.0 AS final_iter, * FROM read_json_auto('runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json', format='newline_delimited')), binned AS (SELECT run, least(19, floor(iteration / final_iter * 20))::INTEGER AS bin_id, avg(total_loss) AS total_loss, avg(loss_ce) AS loss_ce, avg(loss_bbox) AS loss_bbox, avg(loss_giou) AS loss_giou, count(*) AS observations FROM raw WHERE total_loss IS NOT NULL GROUP BY run, bin_id) SELECT (bin_id + 0.5) * 5 AS progress_pct, max(total_loss) FILTER (WHERE run='sar001') AS sar001_total_loss, max(total_loss) FILTER (WHERE run='sar005') AS sar005_total_loss, max(loss_ce) FILTER (WHERE run='sar001') AS sar001_loss_ce, max(loss_ce) FILTER (WHERE run='sar005') AS sar005_loss_ce, max(loss_bbox) FILTER (WHERE run='sar001') AS sar001_loss_bbox, max(loss_bbox) FILTER (WHERE run='sar005') AS sar005_loss_bbox, max(loss_giou) FILTER (WHERE run='sar001') AS sar001_loss_giou, max(loss_giou) FILTER (WHERE run='sar005') AS sar005_loss_giou, max(observations) FILTER (WHERE run='sar001') AS sar001_observations, max(observations) FILTER (WHERE run='sar005') AS sar005_observations FROM binned GROUP BY bin_id ORDER BY bin_id;",
+          "description": "读取含 total_loss 的训练记录，按各自最终 iteration 将训练进度划分为二十个 5% 分箱，并对每箱的 total_loss、loss_ce、loss_bbox、loss_giou 求算术均值。",
+          "executed_at": "2026-07-30T15:54:43+08:00",
+          "language": "python",
+          "filters": [
+            "仅保留含 total_loss 的训练记录",
+            "按每次运行的完整训练进度归一化",
+            "不对不同 Batch 的单步损失做样本级重加权"
+          ],
+          "metric_definitions": [
+            "后期 loss：最后 10% 训练进度内 JSON writer 记录的 total_loss 算术均值",
+            "进度分箱 loss：每个 5% 训练进度分箱内 writer 记录的算术均值"
+          ],
+          "tables_used": [
+            "runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json",
+            "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json"
+          ]
+        }
+      },
+      {
+        "id": "frozen-configs",
+        "label": "两次运行的冻结配置与 sar-005 运行清单",
+        "query": {
+          "engine": "DuckDB-compatible",
+          "sql": "WITH plan AS (SELECT 16 AS sar001_batch, 397288 AS sar001_iter, 25 AS sar005_batch, 254264 AS sar005_iter, 31783 AS train_images), config_diff AS (SELECT * FROM (VALUES (5, 'INPUT.MIN_SIZE_TRAIN', '[256]', '[256,384,512,640,768,896,1024]'), (5, 'INPUT.MAX_SIZE_TRAIN', '256', '1024'), (4, 'SOLVER.IMS_PER_BATCH', '16', '25'), (4, 'SOLVER.BASE_LR', '2.5e-5', '3.5e-5'), (3, 'SOLVER.MAX_ITER', '397288', '254264'), (3, 'SOLVER.STEPS', '[278102,357559]', '[177985,228838]'), (3, 'SEED', '-1', '40244023'), (2, 'INPUT.MAX_SIZE_TEST', '256', '1024'), (1, 'SOLVER.CHECKPOINT_PERIOD', '5000', '2000')) AS t(priority, config_key, sar001, sar005)) SELECT config_diff.*, sar001_batch * sar001_iter / train_images::DOUBLE AS sar001_epochs, sar005_batch * sar005_iter / train_images::DOUBLE AS sar005_epochs FROM config_diff CROSS JOIN plan ORDER BY priority DESC, config_key;",
+          "description": "递归展开并逐键比较两个冻结 config.yaml；以 experiment_manifest.json 复核 sar-005 实际 Batch、学习率、迭代数和环境。",
+          "executed_at": "2026-07-30T15:54:43+08:00",
+          "language": "python",
+          "filters": [
+            "忽略 EXPERIMENT 元数据、OUTPUT_DIR、未启用的 MobileNetV4 与 EMA 默认配置",
+            "训练样本暴露按 IMS_PER_BATCH × MAX_ITER 计算"
+          ],
+          "metric_definitions": [
+            "数据遍历次数：IMS_PER_BATCH × MAX_ITER ÷ 31,783",
+            "学习率里程碑样本位置：IMS_PER_BATCH × STEPS"
+          ],
+          "tables_used": [
+            "runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/config.yaml",
+            "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/config.yaml",
+            "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/experiment_manifest.json"
+          ]
+        }
+      },
+      {
+        "id": "dataset-and-mapper",
+        "label": "SAR COCO 标注尺寸与 DiffusionDet 数据映射逻辑",
+        "query": {
+          "engine": "local JSON and Python source",
+          "description": "统计 train/val images 的 width、height，并检查 ResizeShortestEdge 与 crop 组合的实现。",
+          "executed_at": "2026-07-30T15:54:43+08:00",
+          "language": "python",
+          "filters": [
+            "统计全部训练和验证图像",
+            "训练图 31,783 张，验证图 7,946 张"
+          ],
+          "metric_definitions": [
+            "平均像素倍率：七个训练边长平方的均值 ÷ 256²"
+          ],
+          "tables_used": [
+            "SAR_COCO_ship/annotations/instances_train2017.json",
+            "SAR_COCO_ship/annotations/instances_val2017.json",
+            "diffusiondet/dataset_mapper.py",
+            "configs/Base-DiffusionDet.yaml"
+          ]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# SAR-005 与 SAR-001 训练结果诊断",
+        "layout": "full"
+      },
+      {
+        "id": "technical-summary",
+        "type": "markdown",
+        "body": "## 技术结论：不是简单的“少跑了”，而是复现条件已经改变\n\n**`sar-005` 已完成其实际配置规定的训练，并且末段损失基本进入平台；现有证据不支持把 8.10 AP 的差距主要解释为“还没收敛”。** 两次运行都看过约 635.66 万张训练样本，约等于 200 次数据集遍历，并都完成了 70%/90% 处的两次学习率衰减。\n\n**它也不是 `sar-001` 的严格复现。** `sar-001` 使用固定 256 尺寸、Batch 16、`BASE_LR=2.5e-5`；`sar-005` 实际使用 256–1024 多尺度、Batch 25、`BASE_LR=3.5e-5`。目录名仍写着 `bs16-it397288`，与冻结配置和运行清单不一致。\n\n**最强的解释是训练输入尺度与优化轨迹共同发生了漂移。** 所有原始 SAR 图都是 256×256，但 `sar-005` 随机上采样到七个尺度，平均训练像素数约为固定 256 的 7.25 倍。AP50 只低 1.21 点，而 AP75 低 14.90 点，说明粗略检出仍接近，主要退化集中在严格定位与小目标精度。\n\n这仍是诊断性结论，不是单因素因果证明；种子与 GPU 架构差异可能贡献部分波动，但无法用当前各一次运行量化。",
+        "layout": "full"
+      },
+      {
+        "id": "headline-metrics",
+        "type": "metric-strip",
+        "cardIds": [
+          "card-ap",
+          "card-ap75",
+          "card-exposure",
+          "card-late-loss"
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "ap-finding",
+        "type": "markdown",
+        "body": "## 精度差距集中在高 IoU 与小目标，而不是基本检出\n\n`sar-005` 的 AP 为 58.84，比 `sar-001` 低 8.10 点。AP50 仅低 1.21 点，但 AP75 低 14.90 点；APs、APm、APl 分别低 9.46、7.69、3.27 点。这个结构更像框定位质量和小目标表征变差，而不是模型完全没有学会找船。\n\n下面的图使用同一验证集和同一 COCOEvaluator 口径。它能定位差距，但不能单独证明是哪一个训练配置造成了差距。",
+        "layout": "full",
+        "sourceId": "final-metrics"
+      },
+      {
+        "id": "ap-chart-block",
+        "type": "chart",
+        "chartId": "chart-ap-comparison",
+        "layout": "full"
+      },
+      {
+        "id": "loss-finding",
+        "type": "markdown",
+        "body": "## `sar-005` 后期已平台化，直接原地延长训练的收益预计有限\n\n两次训练在前 10% 的 total_loss 很接近；从约 12.5% 进度开始，`sar-005` 持续高于 `sar-001`。最后 10% 的均值为 2.883 对 2.224，高约 29.6%。更关键的是，`sar-005` 在 90%–92% 进度的均值为 2.890，在 98%–100% 为 2.882，只下降约 0.3%，已呈平台。\n\n因此，“当前配置只需再跑一段就会追上”缺少证据。训练损失受 Batch 和增强分布影响，不能直接换算 AP，但末段平台足以反驳明显未完成收敛的说法。",
+        "layout": "full",
+        "sourceId": "training-metrics"
+      },
+      {
+        "id": "loss-chart-block",
+        "type": "chart",
+        "chartId": "chart-loss-progress",
+        "layout": "full"
+      },
+      {
+        "id": "config-finding",
+        "type": "markdown",
+        "body": "## 冻结配置证明这不是同条件复现\n\n模型结构相关的关键项一致：ResNet-18、FPN/HIDDEN 128、500 proposals、scratch、单类别。但输入与优化参数同时改变。Batch 25 与缩短后的迭代数保持了几乎完全相同的样本暴露，两个学习率里程碑也按样本数对齐，因此 `MAX_ITER=254264` 本身不是少训练。\n\n真正破坏可比性的是：训练分辨率从固定 256 变成 256–1024 多尺度；Batch 和绝对学习率也改变；随机种子由未固定变为固定。`CHECKPOINT_PERIOD` 只影响保存频率，不应影响精度。",
+        "layout": "full",
+        "sourceId": "frozen-configs"
+      },
+      {
+        "id": "config-table-block",
+        "type": "table",
+        "tableId": "table-config-diff",
+        "layout": "full"
+      },
+      {
+        "id": "scope-definitions",
+        "type": "markdown",
+        "body": "## 比较范围与指标口径\n\n- 数据集：`sar_ship_train` 31,783 张图，`sar_ship_val` 7,946 张图；全部原图均为 256×256。\n- 模型：两次运行均为 ResNet-18、FPN 128、DiffusionDet hidden 128、500 proposals、从头训练。\n- 最终精度：各自 `metrics.json` 最后一条含 `bbox/AP` 的记录。\n- 训练进度：以各自最终 iteration 归一化为 0%–100%，每 5% 分箱计算 writer 记录均值。\n- 样本暴露：全局 Batch × `MAX_ITER`；不等同于独立样本数，因为训练采样会重复数据。\n- “收敛”：本报告只判断训练损失末段是否仍显著下降；由于没有周期性验证 AP，不能重建验证精度随训练进度的真实曲线。",
+        "layout": "full"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## 诊断方法与实验设计核对\n\n先复核运行是否完整：`sar-005` 从 iteration 0 训练到 254,263，生成 `model_final.pth` 并完成验证，清单状态为 `completed`。随后递归比较两份冻结配置，而不是相信目录名或当前 YAML；再把训练计划换算成累计样本数，确认两次运行都约为 200 次数据遍历，且学习率衰减发生在相同样本位置。\n\n最后比较最终 COCO 指标结构与归一化损失曲线，并检查数据映射代码。多尺度配置的七个边长均匀候选平均为 640；按像素面积计算，平均输入约为 256 固定输入的 7.25 倍。训练末段日志的单步时间约为 1.946 秒对 0.295 秒，也与计算量显著增加的方向一致。",
+        "layout": "full"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 不确定性、反例与稳健性限制\n\n- 每个设置只有一次最终运行，`sar-001` 又是 `SEED=-1`，无法估计种子方差或置信区间。\n- 输入尺度、Batch、学习率、种子和 GPU 架构同时变化，当前证据只能排序最可能驱动因素，不能宣称多尺度是唯一因果。\n- 两次软件主版本相同（Python 3.10.19、PyTorch 2.10.0+cu128、TorchVision 0.25.0+cu128），但 GPU 从 RTX 5090 变为 RTX 2080 Ti；不同架构的浮点归约和 CUDA kernel 选择可能造成小幅轨迹差异。\n- 只有最终验证 AP，没有中间 checkpoint 的验证结果，所以不能判断 AP 曾经达到峰值后回落，也不能选择最佳早停点。\n- 不同增强和 Batch 下的训练 loss 分布不完全同口径；本报告把它用于观察各自末段趋势，而不是把 loss 差值直接解释成 AP 差值。",
+        "layout": "full"
+      },
+      {
+        "id": "next-steps",
+        "type": "markdown",
+        "body": "## 推荐下一步：先做真正的严格复现，不要原地续训\n\n1. 将现有 `sar-005` 记录为“Batch 25 + 256–1024 多尺度”的已完成实验，不再把它称为 `sar-001` 严格复现；目录名与实际配置不一致也应在实验日志中注明。\n2. 使用新实验 ID 创建严格复现：固定 `INPUT.MIN_SIZE_TRAIN=(256,)`、`MAX_SIZE_TRAIN=256`、Batch 16、`BASE_LR=2.5e-5`、`MAX_ITER=397288`、`STEPS=(278102,357559)`，其余模型与数据项保持不变，并固定一个非负种子。\n3. 如果资源允许，再用两个额外种子复跑同一严格配置，报告 AP 均值、标准差和范围；这样才能判断 66.94 是否是幸运种子。\n4. 若要研究多尺度，把它作为严格基线之后的独立消融：只改训练尺度，保持 Batch、按样本数对齐的学习率计划和其他配置不变。\n5. 为后续正式实验增加周期性验证或至少对保存的 checkpoint 做独立时间戳复评，才能区分未收敛、过拟合与末段平台。",
+        "layout": "full"
+      },
+      {
+        "id": "further-questions",
+        "type": "markdown",
+        "body": "## 仍需回答的问题\n\n- 固定 256 的严格复现，在 `SEED=40244023` 下能否回到历史 66.94 附近？\n- 历史 `SEED=-1` 的实际运行种子是否还能从事件文件、进程日志或旧启动环境中恢复？\n- 多尺度退化主要来自尺度分布本身，还是来自 Batch/LR 联动？需要单因素实验拆分。\n- 中间 checkpoint 的 AP 是否先升后降？若用户授权复评，可对现存的 `sar-005` 68k、136k、254k checkpoint 做独立评估。",
+        "layout": "full"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-30T15:54:43+08:00",
+    "status": "ready",
+    "datasets": {
+      "summary": [
+        {
+          "sar005_ap": 58.8383,
+          "ap_delta": -8.1027,
+          "sar005_ap75": 65.448,
+          "ap75_delta": -14.8979,
+          "sar005_epochs": 200.0,
+          "sar001_epochs": 200.0003,
+          "sar005_late_loss": 2.8826,
+          "sar001_late_loss": 2.2238,
+          "late_loss_delta_pct": 29.63
+        }
+      ],
+      "ap_comparison": [
+        {
+          "metric": "AP",
+          "sar001": 66.941,
+          "sar005": 58.8383,
+          "delta": -8.1027,
+          "interpretation": "IoU 0.50:0.95 平均"
+        },
+        {
+          "metric": "AP50",
+          "sar001": 96.8267,
+          "sar005": 95.6121,
+          "delta": -1.2146,
+          "interpretation": "IoU=0.50"
+        },
+        {
+          "metric": "AP75",
+          "sar001": 80.3459,
+          "sar005": 65.448,
+          "delta": -14.8979,
+          "interpretation": "IoU=0.75"
+        },
+        {
+          "metric": "APs",
+          "sar001": 62.2336,
+          "sar005": 52.7774,
+          "delta": -9.4562,
+          "interpretation": "COCO 小目标"
+        },
+        {
+          "metric": "APm",
+          "sar001": 73.6997,
+          "sar005": 66.0107,
+          "delta": -7.689,
+          "interpretation": "COCO 中目标"
+        },
+        {
+          "metric": "APl",
+          "sar001": 80.5912,
+          "sar005": 77.3167,
+          "delta": -3.2745,
+          "interpretation": "COCO 大目标"
+        }
+      ],
+      "loss_progress": [
+        {
+          "progress_pct": 2.5,
+          "sar001_total_loss": 6.683205,
+          "sar005_total_loss": 6.63448,
+          "sar001_loss_ce": 0.246144,
+          "sar005_loss_ce": 0.262577,
+          "sar001_loss_bbox": 0.2687,
+          "sar005_loss_bbox": 0.217164,
+          "sar001_loss_giou": 0.545879,
+          "sar005_loss_giou": 0.539331,
+          "sar001_observations": 993,
+          "sar005_observations": 635
+        },
+        {
+          "progress_pct": 7.5,
+          "sar001_total_loss": 5.061713,
+          "sar005_total_loss": 5.055535,
+          "sar001_loss_ce": 0.147548,
+          "sar005_loss_ce": 0.15716,
+          "sar001_loss_bbox": 0.16258,
+          "sar005_loss_bbox": 0.164045,
+          "sar001_loss_giou": 0.447647,
+          "sar005_loss_giou": 0.447316,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 12.5,
+          "sar001_total_loss": 4.60402,
+          "sar005_total_loss": 4.731127,
+          "sar001_loss_ce": 0.120629,
+          "sar005_loss_ce": 0.13606,
+          "sar001_loss_bbox": 0.145912,
+          "sar005_loss_bbox": 0.152159,
+          "sar001_loss_giou": 0.409866,
+          "sar005_loss_giou": 0.420176,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 17.5,
+          "sar001_total_loss": 4.267037,
+          "sar005_total_loss": 4.510872,
+          "sar001_loss_ce": 0.10129,
+          "sar005_loss_ce": 0.124419,
+          "sar001_loss_bbox": 0.133616,
+          "sar005_loss_bbox": 0.142519,
+          "sar001_loss_giou": 0.38038,
+          "sar005_loss_giou": 0.398605,
+          "sar001_observations": 993,
+          "sar005_observations": 635
+        },
+        {
+          "progress_pct": 22.5,
+          "sar001_total_loss": 3.989177,
+          "sar005_total_loss": 4.333825,
+          "sar001_loss_ce": 0.08863,
+          "sar005_loss_ce": 0.114327,
+          "sar001_loss_bbox": 0.12376,
+          "sar005_loss_bbox": 0.13478,
+          "sar001_loss_giou": 0.356444,
+          "sar005_loss_giou": 0.381727,
+          "sar001_observations": 994,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 27.5,
+          "sar001_total_loss": 3.765104,
+          "sar005_total_loss": 4.179686,
+          "sar001_loss_ce": 0.078147,
+          "sar005_loss_ce": 0.106327,
+          "sar001_loss_bbox": 0.115663,
+          "sar005_loss_bbox": 0.127592,
+          "sar001_loss_giou": 0.336537,
+          "sar005_loss_giou": 0.365103,
+          "sar001_observations": 993,
+          "sar005_observations": 635
+        },
+        {
+          "progress_pct": 32.5,
+          "sar001_total_loss": 3.585635,
+          "sar005_total_loss": 4.036913,
+          "sar001_loss_ce": 0.069874,
+          "sar005_loss_ce": 0.096208,
+          "sar001_loss_bbox": 0.109157,
+          "sar005_loss_bbox": 0.122029,
+          "sar001_loss_giou": 0.320621,
+          "sar005_loss_giou": 0.35094,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 37.5,
+          "sar001_total_loss": 3.430072,
+          "sar005_total_loss": 3.920416,
+          "sar001_loss_ce": 0.063035,
+          "sar005_loss_ce": 0.088458,
+          "sar001_loss_bbox": 0.10402,
+          "sar005_loss_bbox": 0.116984,
+          "sar001_loss_giou": 0.306921,
+          "sar005_loss_giou": 0.338566,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 42.5,
+          "sar001_total_loss": 3.299977,
+          "sar005_total_loss": 3.816331,
+          "sar001_loss_ce": 0.058226,
+          "sar005_loss_ce": 0.080399,
+          "sar001_loss_bbox": 0.099512,
+          "sar005_loss_bbox": 0.112158,
+          "sar001_loss_giou": 0.295088,
+          "sar005_loss_giou": 0.327724,
+          "sar001_observations": 994,
+          "sar005_observations": 635
+        },
+        {
+          "progress_pct": 47.5,
+          "sar001_total_loss": 3.188021,
+          "sar005_total_loss": 3.711923,
+          "sar001_loss_ce": 0.052941,
+          "sar005_loss_ce": 0.072486,
+          "sar001_loss_bbox": 0.095554,
+          "sar005_loss_bbox": 0.108158,
+          "sar001_loss_giou": 0.284963,
+          "sar005_loss_giou": 0.317208,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 52.5,
+          "sar001_total_loss": 3.085648,
+          "sar005_total_loss": 3.624186,
+          "sar001_loss_ce": 0.049498,
+          "sar005_loss_ce": 0.066806,
+          "sar001_loss_bbox": 0.092317,
+          "sar005_loss_bbox": 0.104242,
+          "sar001_loss_giou": 0.275785,
+          "sar005_loss_giou": 0.307317,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 57.5,
+          "sar001_total_loss": 3.006809,
+          "sar005_total_loss": 3.533312,
+          "sar001_loss_ce": 0.045472,
+          "sar005_loss_ce": 0.06272,
+          "sar001_loss_bbox": 0.089483,
+          "sar005_loss_bbox": 0.099971,
+          "sar001_loss_giou": 0.268441,
+          "sar005_loss_giou": 0.296797,
+          "sar001_observations": 993,
+          "sar005_observations": 635
+        },
+        {
+          "progress_pct": 62.5,
+          "sar001_total_loss": 2.916399,
+          "sar005_total_loss": 3.460809,
+          "sar001_loss_ce": 0.041845,
+          "sar005_loss_ce": 0.057707,
+          "sar001_loss_bbox": 0.086556,
+          "sar005_loss_bbox": 0.09676,
+          "sar001_loss_giou": 0.260644,
+          "sar005_loss_giou": 0.288546,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 67.5,
+          "sar001_total_loss": 2.842442,
+          "sar005_total_loss": 3.390216,
+          "sar001_loss_ce": 0.038481,
+          "sar005_loss_ce": 0.053782,
+          "sar001_loss_bbox": 0.084198,
+          "sar005_loss_bbox": 0.093581,
+          "sar001_loss_giou": 0.254016,
+          "sar005_loss_giou": 0.280461,
+          "sar001_observations": 994,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 72.5,
+          "sar001_total_loss": 2.468271,
+          "sar005_total_loss": 3.068829,
+          "sar001_loss_ce": 0.028972,
+          "sar005_loss_ce": 0.040219,
+          "sar001_loss_bbox": 0.070968,
+          "sar005_loss_bbox": 0.080674,
+          "sar001_loss_giou": 0.216765,
+          "sar005_loss_giou": 0.246163,
+          "sar001_observations": 993,
+          "sar005_observations": 635
+        },
+        {
+          "progress_pct": 77.5,
+          "sar001_total_loss": 2.366077,
+          "sar005_total_loss": 2.990371,
+          "sar001_loss_ce": 0.026519,
+          "sar005_loss_ce": 0.03671,
+          "sar001_loss_bbox": 0.067414,
+          "sar005_loss_bbox": 0.077539,
+          "sar001_loss_giou": 0.206494,
+          "sar005_loss_giou": 0.237866,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 82.5,
+          "sar001_total_loss": 2.31549,
+          "sar005_total_loss": 2.950363,
+          "sar001_loss_ce": 0.025883,
+          "sar005_loss_ce": 0.035448,
+          "sar001_loss_bbox": 0.065318,
+          "sar005_loss_bbox": 0.076027,
+          "sar001_loss_giou": 0.20069,
+          "sar005_loss_giou": 0.233727,
+          "sar001_observations": 993,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 87.5,
+          "sar001_total_loss": 2.27799,
+          "sar005_total_loss": 2.925396,
+          "sar001_loss_ce": 0.024943,
+          "sar005_loss_ce": 0.034501,
+          "sar001_loss_bbox": 0.063925,
+          "sar005_loss_bbox": 0.074755,
+          "sar001_loss_giou": 0.196918,
+          "sar005_loss_giou": 0.230097,
+          "sar001_observations": 993,
+          "sar005_observations": 635
+        },
+        {
+          "progress_pct": 92.5,
+          "sar001_total_loss": 2.228172,
+          "sar005_total_loss": 2.883882,
+          "sar001_loss_ce": 0.024587,
+          "sar005_loss_ce": 0.033012,
+          "sar001_loss_bbox": 0.062115,
+          "sar005_loss_bbox": 0.073052,
+          "sar001_loss_giou": 0.191291,
+          "sar005_loss_giou": 0.225921,
+          "sar001_observations": 994,
+          "sar005_observations": 636
+        },
+        {
+          "progress_pct": 97.5,
+          "sar001_total_loss": 2.219404,
+          "sar005_total_loss": 2.881463,
+          "sar001_loss_ce": 0.024229,
+          "sar005_loss_ce": 0.033164,
+          "sar001_loss_bbox": 0.061942,
+          "sar005_loss_bbox": 0.072911,
+          "sar001_loss_giou": 0.190323,
+          "sar005_loss_giou": 0.224907,
+          "sar001_observations": 994,
+          "sar005_observations": 637
+        }
+      ],
+      "config_diff": [
+        {
+          "priority": 5,
+          "config_key": "INPUT.MIN_SIZE_TRAIN",
+          "sar001": "[256]",
+          "sar005": "[256,384,512,640,768,896,1024]",
+          "diagnostic_effect": "最关键漂移；平均训练像素约 7.25×"
+        },
+        {
+          "priority": 5,
+          "config_key": "INPUT.MAX_SIZE_TRAIN",
+          "sar001": "256",
+          "sar005": "1024",
+          "diagnostic_effect": "允许训练图上采样到 1024"
+        },
+        {
+          "priority": 4,
+          "config_key": "SOLVER.IMS_PER_BATCH",
+          "sar001": "16",
+          "sar005": "25",
+          "diagnostic_effect": "改变梯度噪声与每步优化统计"
+        },
+        {
+          "priority": 4,
+          "config_key": "SOLVER.BASE_LR",
+          "sar001": "2.5e-5",
+          "sar005": "3.5e-5",
+          "diagnostic_effect": "绝对 LR 提高 40%；并非严格线性缩放值"
+        },
+        {
+          "priority": 3,
+          "config_key": "SOLVER.MAX_ITER",
+          "sar001": "397288",
+          "sar005": "254264",
+          "diagnostic_effect": "与 Batch 联动后样本暴露仍约 200 次遍历"
+        },
+        {
+          "priority": 3,
+          "config_key": "SOLVER.STEPS",
+          "sar001": "[278102,357559]",
+          "sar005": "[177985,228838]",
+          "diagnostic_effect": "按样本数计算几乎完全对齐 70%/90%"
+        },
+        {
+          "priority": 3,
+          "config_key": "SEED",
+          "sar001": "-1",
+          "sar005": "40244023",
+          "diagnostic_effect": "随机轨迹改变；无法由单次运行估计方差"
+        },
+        {
+          "priority": 2,
+          "config_key": "INPUT.MAX_SIZE_TEST",
+          "sar001": "256",
+          "sar005": "1024",
+          "diagnostic_effect": "原图和 MIN_SIZE_TEST 均为 256，实际测试尺寸仍为 256"
+        },
+        {
+          "priority": 1,
+          "config_key": "SOLVER.CHECKPOINT_PERIOD",
+          "sar001": "5000",
+          "sar005": "2000",
+          "diagnostic_effect": "只改变保存频率，不应影响精度"
+        }
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "final-metrics",
+      "label": "sar-001 与 sar-005 最终 metrics.json 评估记录",
+      "query": {
+        "engine": "DuckDB-compatible",
+        "sql": "WITH sar001 AS (SELECT * FROM read_json_auto('runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json', format='newline_delimited') WHERE \"bbox/AP\" IS NOT NULL ORDER BY iteration DESC LIMIT 1), sar005 AS (SELECT * FROM read_json_auto('runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json', format='newline_delimited') WHERE \"bbox/AP\" IS NOT NULL ORDER BY iteration DESC LIMIT 1) SELECT metric, sar001_value AS sar001, sar005_value AS sar005, sar005_value - sar001_value AS delta FROM (SELECT * FROM (VALUES ('AP', (SELECT \"bbox/AP\" FROM sar001), (SELECT \"bbox/AP\" FROM sar005)), ('AP50', (SELECT \"bbox/AP50\" FROM sar001), (SELECT \"bbox/AP50\" FROM sar005)), ('AP75', (SELECT \"bbox/AP75\" FROM sar001), (SELECT \"bbox/AP75\" FROM sar005)), ('APs', (SELECT \"bbox/APs\" FROM sar001), (SELECT \"bbox/APs\" FROM sar005)), ('APm', (SELECT \"bbox/APm\" FROM sar001), (SELECT \"bbox/APm\" FROM sar005)), ('APl', (SELECT \"bbox/APl\" FROM sar001), (SELECT \"bbox/APl\" FROM sar005))) AS metrics(metric, sar001_value, sar005_value));",
+        "description": "分别读取两个 metrics.json 中最后一条含 bbox/AP 的记录。",
+        "executed_at": "2026-07-30T15:54:43+08:00",
+        "language": "python",
+        "filters": [
+          "仅保留含 bbox/AP 的记录",
+          "每次运行取最后一条记录"
+        ],
+        "metric_definitions": [
+          "AP：COCO bbox AP，IoU 0.50:0.95 平均",
+          "AP50/AP75：固定 IoU 阈值下的 bbox AP",
+          "APs/APm/APl：COCO 小/中/大目标 bbox AP"
+        ],
+        "tables_used": [
+          "runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json",
+          "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json"
+        ]
+      }
+    },
+    {
+      "id": "training-metrics",
+      "label": "sar-001 与 sar-005 训练 metrics.json",
+      "query": {
+        "engine": "DuckDB-compatible",
+        "sql": "WITH raw AS (SELECT 'sar001' AS run, 397287.0 AS final_iter, * FROM read_json_auto('runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json', format='newline_delimited') UNION ALL BY NAME SELECT 'sar005' AS run, 254263.0 AS final_iter, * FROM read_json_auto('runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json', format='newline_delimited')), binned AS (SELECT run, least(19, floor(iteration / final_iter * 20))::INTEGER AS bin_id, avg(total_loss) AS total_loss, avg(loss_ce) AS loss_ce, avg(loss_bbox) AS loss_bbox, avg(loss_giou) AS loss_giou, count(*) AS observations FROM raw WHERE total_loss IS NOT NULL GROUP BY run, bin_id) SELECT (bin_id + 0.5) * 5 AS progress_pct, max(total_loss) FILTER (WHERE run='sar001') AS sar001_total_loss, max(total_loss) FILTER (WHERE run='sar005') AS sar005_total_loss, max(loss_ce) FILTER (WHERE run='sar001') AS sar001_loss_ce, max(loss_ce) FILTER (WHERE run='sar005') AS sar005_loss_ce, max(loss_bbox) FILTER (WHERE run='sar001') AS sar001_loss_bbox, max(loss_bbox) FILTER (WHERE run='sar005') AS sar005_loss_bbox, max(loss_giou) FILTER (WHERE run='sar001') AS sar001_loss_giou, max(loss_giou) FILTER (WHERE run='sar005') AS sar005_loss_giou, max(observations) FILTER (WHERE run='sar001') AS sar001_observations, max(observations) FILTER (WHERE run='sar005') AS sar005_observations FROM binned GROUP BY bin_id ORDER BY bin_id;",
+        "description": "读取含 total_loss 的训练记录，按各自最终 iteration 将训练进度划分为二十个 5% 分箱，并对每箱的 total_loss、loss_ce、loss_bbox、loss_giou 求算术均值。",
+        "executed_at": "2026-07-30T15:54:43+08:00",
+        "language": "python",
+        "filters": [
+          "仅保留含 total_loss 的训练记录",
+          "按每次运行的完整训练进度归一化",
+          "不对不同 Batch 的单步损失做样本级重加权"
+        ],
+        "metric_definitions": [
+          "后期 loss：最后 10% 训练进度内 JSON writer 记录的 total_loss 算术均值",
+          "进度分箱 loss：每个 5% 训练进度分箱内 writer 记录的算术均值"
+        ],
+        "tables_used": [
+          "runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/metrics.json",
+          "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/metrics.json"
+        ]
+      }
+    },
+    {
+      "id": "frozen-configs",
+      "label": "两次运行的冻结配置与 sar-005 运行清单",
+      "query": {
+        "engine": "DuckDB-compatible",
+        "sql": "WITH plan AS (SELECT 16 AS sar001_batch, 397288 AS sar001_iter, 25 AS sar005_batch, 254264 AS sar005_iter, 31783 AS train_images), config_diff AS (SELECT * FROM (VALUES (5, 'INPUT.MIN_SIZE_TRAIN', '[256]', '[256,384,512,640,768,896,1024]'), (5, 'INPUT.MAX_SIZE_TRAIN', '256', '1024'), (4, 'SOLVER.IMS_PER_BATCH', '16', '25'), (4, 'SOLVER.BASE_LR', '2.5e-5', '3.5e-5'), (3, 'SOLVER.MAX_ITER', '397288', '254264'), (3, 'SOLVER.STEPS', '[278102,357559]', '[177985,228838]'), (3, 'SEED', '-1', '40244023'), (2, 'INPUT.MAX_SIZE_TEST', '256', '1024'), (1, 'SOLVER.CHECKPOINT_PERIOD', '5000', '2000')) AS t(priority, config_key, sar001, sar005)) SELECT config_diff.*, sar001_batch * sar001_iter / train_images::DOUBLE AS sar001_epochs, sar005_batch * sar005_iter / train_images::DOUBLE AS sar005_epochs FROM config_diff CROSS JOIN plan ORDER BY priority DESC, config_key;",
+        "description": "递归展开并逐键比较两个冻结 config.yaml；以 experiment_manifest.json 复核 sar-005 实际 Batch、学习率、迭代数和环境。",
+        "executed_at": "2026-07-30T15:54:43+08:00",
+        "language": "python",
+        "filters": [
+          "忽略 EXPERIMENT 元数据、OUTPUT_DIR、未启用的 MobileNetV4 与 EMA 默认配置",
+          "训练样本暴露按 IMS_PER_BATCH × MAX_ITER 计算"
+        ],
+        "metric_definitions": [
+          "数据遍历次数：IMS_PER_BATCH × MAX_ITER ÷ 31,783",
+          "学习率里程碑样本位置：IMS_PER_BATCH × STEPS"
+        ],
+        "tables_used": [
+          "runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch/config.yaml",
+          "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/config.yaml",
+          "runs/sar_ship/sar-005__r18-fpn128-h128-bs16-it397288-scratch-seed40244023/experiment_manifest.json"
+        ]
+      }
+    },
+    {
+      "id": "dataset-and-mapper",
+      "label": "SAR COCO 标注尺寸与 DiffusionDet 数据映射逻辑",
+      "query": {
+        "engine": "local JSON and Python source",
+        "description": "统计 train/val images 的 width、height，并检查 ResizeShortestEdge 与 crop 组合的实现。",
+        "executed_at": "2026-07-30T15:54:43+08:00",
+        "language": "python",
+        "filters": [
+          "统计全部训练和验证图像",
+          "训练图 31,783 张，验证图 7,946 张"
+        ],
+        "metric_definitions": [
+          "平均像素倍率：七个训练边长平方的均值 ÷ 256²"
+        ],
+        "tables_used": [
+          "SAR_COCO_ship/annotations/instances_train2017.json",
+          "SAR_COCO_ship/annotations/instances_val2017.json",
+          "diffusiondet/dataset_mapper.py",
+          "configs/Base-DiffusionDet.yaml"
+        ]
+      }
+    }
+  ]
+}

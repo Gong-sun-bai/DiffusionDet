@@ -36,8 +36,8 @@ The installation instruction and usage are in [Getting Started with DiffusionDet
 - [实验日志](docs/实验日志.md)
 - [Codex 项目上下文](AGENTS.md)
 
-当前工作站已创建 `Difdet` 环境并完成 Batch 16、20 iter 的 `sar-007`
-冒烟训练。首次恢复环境时执行：
+当前工作站已创建 `Difdet` 环境，完成 Batch 16、20 iter 的 `sar-007`
+冒烟训练，并完成 `sar-005` 固定种子多尺度训练。首次恢复环境时执行：
 
 ```bash
 PYTHONNOUSERSITE=1 conda env create -f environment.yml
@@ -55,25 +55,42 @@ configs/experiments/
     ├── sar-000.yaml ... sar-004.yaml  # 历史只读配置
     ├── sar-005.yaml                   # 固定种子正式基线
     ├── sar-006-proposals300.yaml      # 单因素消融示例
-    └── sar-007-smoke.yaml             # 已完成的本机训练冒烟
+    ├── sar-007-smoke.yaml             # 已完成的本机训练冒烟
+    └── sar-008-fixed256.yaml          # 待运行的固定 256 复现实验
 ```
 
 RTX 2080 Ti 的 Batch、学习率、训练长度、milestones、worker 和 AMP
 默认值集中在 `configs/machine/rtx2080ti-sar-r18.yaml`。正式实验应继承机器
 配置并分配新 ID；Batch 改变时的联动缩放规范见复现记录。
 
-启动固定种子基线：
+启动固定 256 复现实验：
 
 ```bash
 python train_net.py --num-gpus 1 \
-  --config-file configs/experiments/sar_ship/sar-005.yaml
+  --config-file configs/experiments/sar_ship/sar-008-fixed256.yaml
 ```
 
 入口会根据 `EXPERIMENT.*` 自动写入
 `runs/<dataset>/<ID>__<NAME>/`。新训练禁止复用非空目录；恢复必须传
 `--resume` 且存在有效的 `last_checkpoint`。
 
-评估必须在命令行显式指定 `model_final.pth`，结果自动进入原实验的时间戳子目录：
+训练期间默认每 200 iter 原子更新结果目录中的 `results.png`，并在周期
+验证和训练结束后强制刷新。图片统一展示总损失、分类/L1/GIoU 主头损失、
+学习率、迭代耗时以及已有的 bbox AP。可通过
+`TRAINING_PLOTS.ENABLED` 和 `TRAINING_PLOTS.PERIOD` 关闭或调整频率。
+为旧结果目录补图：
+
+```bash
+python tools/generate_training_plots.py \
+  runs/sar_ship/sar-001__r18-fpn128-h128-bs16-it397288-scratch
+```
+
+补图只读取 `metrics.json` 和可选的 `config.yaml`，不会改写原始日志、
+权重或实验状态。历史实验通常只在训练结束时评估一次，因此 AP 面板会显示
+最终单点，而不是伪造连续验证曲线。
+
+评估必须在命令行显式指定 `model_final.pth`、`model_latest.pth` 或
+`model_best.pth`，结果自动进入原实验的时间戳子目录：
 
 ```bash
 python train_net.py --num-gpus 1 \
@@ -84,9 +101,11 @@ python train_net.py --num-gpus 1 \
 
 `inference/instances_predictions.pth` 是预测缓存，不是模型权重。
 
-当前历史 SAR 最高结果为 `sar-001` 的 AP 66.94，但它使用 `SEED=-1`；
-后续消融必须先完成 `sar-005` 的固定种子复跑。历史结果只保存在本地
-`runs/`，该目录被 Git 忽略。
+当前历史 SAR 最高结果为 `sar-001` 的 AP 66.94，但它使用 `SEED=-1`。
+`sar-005` 已完成并得到 AP 58.84；它实际采用 Batch 25 和多尺度输入，
+不是严格复现。下一步先运行 `sar-008`，在保持 005 的 Batch 和步数时恢复
+固定 256 输入。该实验只保留可续训的 `model_latest.pth` 和验证 AP 最优的
+`model_best.pth`。历史结果只保存在本地 `runs/`，该目录被 Git 忽略。
 
 
 ## License

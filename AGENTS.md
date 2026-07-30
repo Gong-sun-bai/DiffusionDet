@@ -80,12 +80,13 @@ runs/<DATASET>/<ID>__<NAME>/
 - `sar-002`：历史 R18/64，调度无效；
 - `sar-003`：历史 MobileNetV4-Small；
 - `sar-004`：历史 MobileNetV4-Medium；
-- `sar-005`：待运行的固定种子正式基线；
-- `sar-006`：待运行的 proposals=300 单因素示例；
+- `sar-005`：已完成的固定种子、多尺度 Batch 25 基线，AP 58.84；目录名与实际 Batch/Iter 不一致，以冻结配置为准；
+- `sar-006`：待运行的 proposals=300 单因素示例，暂缓；
 - `sar-007`：已完成的 RTX 2080 Ti Batch 16 / 20 iter 冒烟，不含 AP；
+- `sar-008`：待运行的固定 256 输入复现实验，沿用 `sar-005` 的 Batch 25 和 254264 iter；
 - `panda-000`：历史 PANDA 四类别基线。
 
-新增实验必须使用下一未占用序号。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
+下一未占用 SAR 序号为 `sar-009`。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
 
 历史迁移映射只在 `docs/实验日志.md` 和 `tools/migrate_historical_runs.py` 中维护；不要恢复旧 `output*` 目录或创建兼容软链接。
 
@@ -94,19 +95,20 @@ runs/<DATASET>/<ID>__<NAME>/
 - 新训练发现目标目录非空会报错，不要绕过。
 - `--resume` 只允许在已有规范目录中使用，且 `last_checkpoint` 必须指向现有检查点。
 - `--eval-only` 不能与 `--resume` 同时使用。
-- 评估必须通过命令行显式指定 `MODEL.WEIGHTS .../model_final.pth`。
+- 评估必须通过命令行显式指定 `MODEL.WEIGHTS`，文件名只允许 `model_final.pth`、`model_latest.pth` 或 `model_best.pth`。
 - `inference/instances_predictions.pth` 是逐图预测列表，永远不是模型权重。
 - 评估输出自动进入 `<run>/evaluations/<UTC时间戳>/`。
 - 历史配置 `KIND=historical`，训练入口会拒绝重新训练。
 - 非历史实验必须固定非负 `SEED`，默认 `40244023`。
 - 非历史实验的每个 `SOLVER.STEPS` 必须小于 `SOLVER.MAX_ITER`。
+- `SOLVER.CHECKPOINT_RETENTION=latest` 会周期性覆盖 `model_latest.pth`；启用 `TEST.BEST_CHECKPOINT` 时按验证指标覆盖 `model_best.pth`，`last_checkpoint` 仍必须指向 latest 以用于续训。
 - 不修改历史 `config.yaml`、`log.txt`、`metrics.json` 和权重；新结论写入实验日志。
 
 标准训练：
 
 ```bash
 python train_net.py --num-gpus 1 \
-  --config-file configs/experiments/sar_ship/sar-005.yaml
+  --config-file configs/experiments/sar_ship/sar-008-fixed256.yaml
 ```
 
 标准复评：
@@ -139,7 +141,7 @@ EXPERIMENT:
 
 一次实验只验证一个假设。FPN/HIDDEN 等因结构兼容必须一起变化时，可作为一个“检测头宽度”概念因素，但必须在 `PURPOSE` 和日志中说明。不要在模型源码中按实验 ID 写条件分支；应新增语义清晰的配置开关并保持默认行为不变。
 
-推荐顺序：`sar-005` → 通道宽度 → backbone → proposal 数 → sample step → 输入尺度/裁剪 → 损失权重。
+推荐顺序：`sar-008` 固定 256 复现 → 确定可信基线 → 通道宽度 → backbone → proposal 数 → sample step → 输入尺度/裁剪 → 损失权重。
 
 ## 历史结果速查
 
@@ -150,9 +152,10 @@ EXPERIMENT:
 | `sar-002` | SAR | 17.88M | 60.96 | `STEPS > MAX_ITER`，状态 `invalid` |
 | `sar-003` | SAR | 7.70M | 54.96 | 无端侧速度证据 |
 | `sar-004` | SAR | 20.58M | 57.61 | 延长训练后 milestones 未重算 |
+| `sar-005` | SAR | 34.46M | 58.84 | 固定种子但为 Batch 25、多尺度，不是 `sar-001` 严格复现 |
 | `panda-000` | PANDA | 110.67M | 13.24 | 四类别，不可与 SAR 横比 |
 
-最终指标优先读取 `metrics.json` 最后一条含 `bbox/AP` 的记录，并与 `log.txt` 复核。参数量来自 `model_final.pth` 的 `model` 状态字典。
+最终指标优先读取 `metrics.json` 最后一条含 `bbox/AP` 的记录，并与 `log.txt` 复核。参数量来自实际评估权重的 `model` 状态字典。
 
 ## 修改位置
 

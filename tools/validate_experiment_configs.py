@@ -16,7 +16,9 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 from experiment_manager import (
     ExperimentError,
     metadata_from_cfg,
+    validate_checkpoint_policy,
     validate_metadata,
+    validate_training_plot_policy,
     validate_weights,
 )
 
@@ -113,6 +115,8 @@ def main() -> int:
                 max_iter=int(config["SOLVER"]["MAX_ITER"]),
                 steps=as_sequence(config["SOLVER"].get("STEPS", ())),
             )
+            validate_checkpoint_policy(config)
+            validate_training_plot_policy(config)
             validate_weights(str(config.get("MODEL", {}).get("WEIGHTS", "")))
             if "OUTPUT_DIR" in raw:
                 raise ExperimentError("实验配置不得手写 OUTPUT_DIR。")

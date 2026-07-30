@@ -1,6 +1,6 @@
 # RTX 2080 Ti 基线环境恢复与冒烟复现记录
 
-> 执行日期：2026-07-23
+> 首次执行日期：2026-07-23；状态更新：2026-07-30
 > 工作站：`troy-compute`
 > 仓库：`/home/troy/workspace/DiffusionDet`
 > 验证范围：SAR ResNet-18 / FPN 128 固定种子基线的环境、数据、建模、反向传播与检查点链路
@@ -18,7 +18,7 @@
 - 驱动：570.211.01
 - 本地 Detectron2 `_C`：按 CPU-only 方式重新编译，已通过导入
 
-`sar-007` 已完成 20 次真实训练迭代，Batch 16 未发生 OOM。该运行只证明当前机器可以启动正式基线训练，不提供 AP 或收敛性证据。正式固定种子基线仍是 `sar-005`，其输出目录未被创建。
+`sar-007` 已完成 20 次真实训练迭代，Batch 16 未发生 OOM。随后 `sar-005` 以 Batch 25、254,264 iter 和 256–1024 多尺度训练完成，峰值显存 19,403 MB，最终 `AP=58.84`。它不是固定 256 的 `sar-001` 严格复现；当前待运行实验是 `sar-008`。
 
 ## 2. 环境创建
 
@@ -111,7 +111,7 @@ SAR 基线使用的普通 ROIAlign 和 NMS 来自 TorchVision，已由 20-iter G
 | `DATALOADER.NUM_WORKERS` | 4 |
 | `SOLVER.AMP.ENABLED` | False |
 
-`sar-005` 和后续 `sar-006` 均继承这层机器配置。机器层只集中固化运行参数，模型结构、数据集和研究变量仍由具体实验配置声明。
+`sar-005` 和后续实验均继承这层机器配置，但具体实验可以显式覆盖。`sar-005` 的冻结实际值为 Batch 25、`BASE_LR=3.5e-5`、254,264 iter 和 milestones 177,985/228,838；机器层默认值不能替代运行目录内的冻结配置。
 
 ## 5. `sar-007` 冒烟结果
 
@@ -161,32 +161,32 @@ runs/sar_ship/sar-007__r18-fpn128-h128-bs16-it20-smoke-seed40244023/
 
 该目录已非空，训练入口会拒绝不带 `--resume` 的重复运行。冒烟已经完成，不应为了“再验证一次”删除或覆盖该目录；需要新的烟测时应分配新的实验 ID。
 
-## 6. 正式训练与恢复
+## 6. 当前正式训练与恢复
 
-启动固定种子正式基线：
+`sar-005` 已完成，不得原地重跑或延长。启动固定 256 输入的 `sar-008`：
 
 ```bash
 conda activate Difdet
 cd /home/troy/workspace/DiffusionDet
 python train_net.py --num-gpus 1 \
-  --config-file configs/experiments/sar_ship/sar-005.yaml
+  --config-file configs/experiments/sar_ship/sar-008-fixed256.yaml
 ```
 
 中断后恢复：
 
 ```bash
 python train_net.py --num-gpus 1 \
-  --config-file configs/experiments/sar_ship/sar-005.yaml \
+  --config-file configs/experiments/sar_ship/sar-008-fixed256.yaml \
   --resume
 ```
 
-正式训练前再次检查 `nvidia-smi`。`sar-007` 的 12,626 MB 是短运行实测峰值，不保证所有随机输入尺度和长时间训练都不会出现更高峰值；若出现真实 OOM，应保留失败清单并按下一节创建新实验，不得原地改变 `sar-005`。
+`sar-008` 每 2,000 iter 覆盖 `model_latest.pth`，每 5,000 iter 验证并按最高 `bbox/AP` 覆盖 `model_best.pth`；`last_checkpoint` 应始终指向 latest。正式训练前再次检查 `nvidia-smi`。虽然固定 256 通常比 `sar-005` 多尺度输入更省显存，仍应保留 OOM 失败清单并用新实验 ID 调整，不得原地改变正式配置。
 
 ## 7. 后续修改与微调规范
 
 ### 7.1 实验身份
 
-- 正式实验必须分配新的未占用 ID，SAR 的 `sar-000` 至 `sar-007` 已占用。
+- 正式实验必须分配新的未占用 ID，SAR 的 `sar-000` 至 `sar-008` 已占用。
 - `smoke` 只验证运行链路，不进入 AP 排名，也不能充当消融基线。
 - 一次实验只改变一个概念因素。结构兼容所需的成组参数必须在 `PURPOSE`、`HYPOTHESIS` 和 `CHANGES` 中说明。
 - 不在模型源码中按实验 ID 写条件分支；新增行为应使用语义明确、默认保持旧行为的配置开关。

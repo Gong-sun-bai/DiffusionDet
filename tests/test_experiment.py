@@ -11,9 +11,11 @@ from experiment_manager import (
     finish_experiment,
     initialize_experiment,
     resolve_run_dir,
+    validate_checkpoint_policy,
     validate_experiment_id,
     validate_output_state,
     validate_slug,
+    validate_training_plot_policy,
 )
 
 
@@ -50,7 +52,20 @@ def make_cfg(**overrides):
             "STEPS": (278102, 357559),
             "WARMUP_ITERS": 1000,
             "CHECKPOINT_PERIOD": 5000,
+            "CHECKPOINT_RETENTION": "all",
             "AMP": {"ENABLED": False},
+        },
+        "TEST": {
+            "EVAL_PERIOD": 0,
+            "BEST_CHECKPOINT": {
+                "ENABLED": False,
+                "METRIC": "bbox/AP",
+                "MODE": "max",
+            },
+        },
+        "TRAINING_PLOTS": {
+            "ENABLED": True,
+            "PERIOD": 200,
         },
         "DATALOADER": {"NUM_WORKERS": 4},
         "INPUT": {
@@ -154,6 +169,48 @@ class ValidationTests(unittest.TestCase):
             self.assertEqual(context.metadata.kind, "smoke")
             self.assertEqual(context.metadata.baseline, "sar-005")
 
+    def test_checkpoint_policy_requires_supported_values(self):
+        with self.assertRaisesRegex(ExperimentError, "RETENTION"):
+            validate_checkpoint_policy(
+                make_cfg(**{"SOLVER.CHECKPOINT_RETENTION": "best-only"})
+            )
+        with self.assertRaisesRegex(ExperimentError, "CHECKPOINT_PERIOD"):
+            validate_checkpoint_policy(
+                make_cfg(
+                    **{
+                        "SOLVER.CHECKPOINT_RETENTION": "latest",
+                        "SOLVER.CHECKPOINT_PERIOD": 0,
+                    }
+                )
+            )
+        with self.assertRaisesRegex(ExperimentError, "EVAL_PERIOD"):
+            validate_checkpoint_policy(
+                make_cfg(**{"TEST.BEST_CHECKPOINT.ENABLED": True})
+            )
+        validate_checkpoint_policy(
+            make_cfg(
+                **{
+                    "SOLVER.CHECKPOINT_RETENTION": "latest",
+                    "TEST.EVAL_PERIOD": 5000,
+                    "TEST.BEST_CHECKPOINT.ENABLED": True,
+                }
+            )
+        )
+
+    def test_training_plot_policy_requires_positive_period_when_enabled(self):
+        with self.assertRaisesRegex(ExperimentError, "PERIOD"):
+            validate_training_plot_policy(
+                make_cfg(**{"TRAINING_PLOTS.PERIOD": 0})
+            )
+        validate_training_plot_policy(
+            make_cfg(
+                **{
+                    "TRAINING_PLOTS.ENABLED": False,
+                    "TRAINING_PLOTS.PERIOD": 0,
+                }
+            )
+        )
+
 
 class DirectorySafetyTests(unittest.TestCase):
     def test_run_directory_is_canonical(self):
@@ -232,6 +289,34 @@ class DirectorySafetyTests(unittest.TestCase):
                 run_dir / "evaluations" / "20260723T010203.456789Z",
             )
             validate_output_state(context)
+
+    def test_evaluation_accepts_latest_and_best_checkpoints(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir = (
+                root
+                / "runs"
+                / "sar_ship"
+                / "sar-005__r18-fpn128-seed40244023"
+            )
+            run_dir.mkdir(parents=True)
+            (root / "weights").mkdir()
+            for filename in ("model_latest.pth", "model_best.pth"):
+                with self.subTest(filename=filename):
+                    weight_path = root / "weights" / filename
+                    weight_path.write_bytes(b"checkpoint")
+                    cfg = make_cfg(
+                        **{"MODEL.WEIGHTS": f"weights/{filename}"}
+                    )
+                    context = configure_experiment(
+                        cfg,
+                        make_args(
+                            eval_only=True,
+                            opts=["MODEL.WEIGHTS", f"weights/{filename}"],
+                        ),
+                        root,
+                    )
+                    validate_output_state(context)
 
     def test_evaluation_rejects_prediction_file_as_weights(self):
         with tempfile.TemporaryDirectory() as temporary:

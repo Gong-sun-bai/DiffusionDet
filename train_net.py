@@ -38,6 +38,14 @@ from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, Dif
 from diffusiondet.util.model_ema import add_model_ema_configs, may_build_model_ema, may_get_ema_checkpointer, EMAHook, \
     apply_model_ema_and_restore, EMADetectionCheckpointer
 from diffusiondet.datasets import register_project_datasets
+from diffusiondet.checkpointing import (
+    LatestCheckpointer,
+    PersistentBestCheckpointer,
+)
+from diffusiondet.training_visualization import (
+    TrainingPlotHook,
+    TrainingPlotWriter,
+)
 from experiment_manager import (
     configure_experiment,
     finish_experiment,
@@ -236,7 +244,20 @@ class Trainer(DefaultTrainer):
         # This is not always the best: if checkpointing has a different frequency,
         # some checkpoints may have more precise statistics than others.
         if comm.is_main_process():
-            ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
+            if cfg.SOLVER.CHECKPOINT_RETENTION == "latest":
+                ret.append(
+                    LatestCheckpointer(
+                        self.checkpointer,
+                        cfg.SOLVER.CHECKPOINT_PERIOD,
+                    )
+                )
+            else:
+                ret.append(
+                    hooks.PeriodicCheckpointer(
+                        self.checkpointer,
+                        cfg.SOLVER.CHECKPOINT_PERIOD,
+                    )
+                )
 
         def test_and_save_results():
             self._last_eval_results = self.test(self.cfg, self.model)
@@ -247,9 +268,29 @@ class Trainer(DefaultTrainer):
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
 
         if comm.is_main_process():
+            if cfg.TEST.BEST_CHECKPOINT.ENABLED:
+                ret.append(
+                    PersistentBestCheckpointer(
+                        cfg.TEST.EVAL_PERIOD,
+                        self.checkpointer,
+                        cfg.TEST.BEST_CHECKPOINT.METRIC,
+                        mode=cfg.TEST.BEST_CHECKPOINT.MODE,
+                    )
+                )
             # Here the default print/log frequency of each writer is used.
             # run writers in the end, so that evaluation metrics are written
             ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))
+            if cfg.TRAINING_PLOTS.ENABLED:
+                ret.append(
+                    TrainingPlotHook(
+                        TrainingPlotWriter(
+                            cfg.OUTPUT_DIR,
+                            max_iter=self.max_iter,
+                        ),
+                        period=cfg.TRAINING_PLOTS.PERIOD,
+                        eval_period=cfg.TEST.EVAL_PERIOD,
+                    )
+                )
         return ret
 
 

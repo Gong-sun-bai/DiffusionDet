@@ -63,6 +63,20 @@ def add_diffusiondet_config(cfg):
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"
     cfg.SOLVER.BACKBONE_MULTIPLIER = 1.0
+    # Keep the upstream checkpoint behavior unless an experiment explicitly
+    # requests a single overwritten latest checkpoint.
+    cfg.SOLVER.CHECKPOINT_RETENTION = "all"
+
+    # Optional validation-driven best checkpoint.
+    cfg.TEST.BEST_CHECKPOINT = CN()
+    cfg.TEST.BEST_CHECKPOINT.ENABLED = False
+    cfg.TEST.BEST_CHECKPOINT.METRIC = "bbox/AP"
+    cfg.TEST.BEST_CHECKPOINT.MODE = "max"
+
+    # YOLO-style training dashboard written to OUTPUT_DIR/results.png.
+    cfg.TRAINING_PLOTS = CN()
+    cfg.TRAINING_PLOTS.ENABLED = True
+    cfg.TRAINING_PLOTS.PERIOD = 200
 
     # Project experiment metadata. Every config launched through train_net.py
     # must override the blank identifiers below.

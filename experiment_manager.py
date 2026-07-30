@@ -27,6 +27,11 @@ DATASET_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 CHANGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.]*:\s*.+\s+->\s+.+$")
 ALLOWED_KINDS = {"historical", "baseline", "ablation", "smoke"}
 PREDICTION_FILENAME = "instances_predictions.pth"
+MODEL_WEIGHT_FILENAMES = {
+    "model_best.pth",
+    "model_final.pth",
+    "model_latest.pth",
+}
 MANIFEST_FILENAME = "experiment_manifest.json"
 SUMMARY_FILENAME = "result_summary.json"
 SCHEMA_VERSION = 1
@@ -168,7 +173,53 @@ def option_was_explicit(options: Sequence[str], key: str) -> bool:
 def validate_weights(weights: str) -> None:
     if Path(weights).name == PREDICTION_FILENAME:
         raise ExperimentError(
-            f"{PREDICTION_FILENAME} 是预测结果，不是模型权重；请使用 model_final.pth。"
+            f"{PREDICTION_FILENAME} 是预测结果，不是模型权重；"
+            "请使用 model_final.pth、model_latest.pth 或 model_best.pth。"
+        )
+
+
+def validate_checkpoint_policy(cfg: Any) -> None:
+    retention = str(_get(cfg, "SOLVER.CHECKPOINT_RETENTION", "all"))
+    if retention not in {"all", "latest"}:
+        raise ExperimentError(
+            "SOLVER.CHECKPOINT_RETENTION 只能为 all 或 latest。"
+        )
+    if retention == "latest" and int(
+        _get(cfg, "SOLVER.CHECKPOINT_PERIOD", 0)
+    ) <= 0:
+        raise ExperimentError(
+            "SOLVER.CHECKPOINT_RETENTION=latest 时 "
+            "SOLVER.CHECKPOINT_PERIOD 必须大于 0。"
+        )
+
+    if not bool(_get(cfg, "TEST.BEST_CHECKPOINT.ENABLED", False)):
+        return
+
+    eval_period = int(_get(cfg, "TEST.EVAL_PERIOD", 0))
+    if eval_period <= 0:
+        raise ExperimentError(
+            "启用 TEST.BEST_CHECKPOINT 时 TEST.EVAL_PERIOD 必须大于 0。"
+        )
+    metric = str(_get(cfg, "TEST.BEST_CHECKPOINT.METRIC", "")).strip()
+    if not metric:
+        raise ExperimentError("TEST.BEST_CHECKPOINT.METRIC 不能为空。")
+    mode = str(_get(cfg, "TEST.BEST_CHECKPOINT.MODE", ""))
+    if mode not in {"max", "min"}:
+        raise ExperimentError(
+            "TEST.BEST_CHECKPOINT.MODE 只能为 max 或 min。"
+        )
+    if not tuple(_get(cfg, "DATASETS.TEST", ()) or ()):
+        raise ExperimentError(
+            "启用 TEST.BEST_CHECKPOINT 时 DATASETS.TEST 不能为空。"
+        )
+
+
+def validate_training_plot_policy(cfg: Any) -> None:
+    if not bool(_get(cfg, "TRAINING_PLOTS.ENABLED", True)):
+        return
+    if int(_get(cfg, "TRAINING_PLOTS.PERIOD", 200)) <= 0:
+        raise ExperimentError(
+            "启用 TRAINING_PLOTS 时 TRAINING_PLOTS.PERIOD 必须大于 0。"
         )
 
 
@@ -201,6 +252,8 @@ def configure_experiment(
         max_iter=int(_get(cfg, "SOLVER.MAX_ITER", 0)),
         steps=_get(cfg, "SOLVER.STEPS", ()),
     )
+    validate_checkpoint_policy(cfg)
+    validate_training_plot_policy(cfg)
 
     eval_only = bool(getattr(args, "eval_only", False))
     resume = bool(getattr(args, "resume", False))
@@ -219,8 +272,9 @@ def configure_experiment(
             raise ExperimentError(
                 "评估必须在命令行显式指定 MODEL.WEIGHTS，避免误用冻结配置。"
             )
-        if Path(weights).name != "model_final.pth":
-            raise ExperimentError("评估权重必须明确指向 model_final.pth。")
+        if Path(weights).name not in MODEL_WEIGHT_FILENAMES:
+            allowed = "、".join(sorted(MODEL_WEIGHT_FILENAMES))
+            raise ExperimentError(f"评估权重文件名只能为：{allowed}。")
 
     run_dir = resolve_run_dir(repository_root, metadata)
     output_dir = (
@@ -336,7 +390,14 @@ def _key_parameters(cfg: Any) -> dict[str, Any]:
         "SOLVER.STEPS",
         "SOLVER.WARMUP_ITERS",
         "SOLVER.CHECKPOINT_PERIOD",
+        "SOLVER.CHECKPOINT_RETENTION",
         "SOLVER.AMP.ENABLED",
+        "TEST.EVAL_PERIOD",
+        "TEST.BEST_CHECKPOINT.ENABLED",
+        "TEST.BEST_CHECKPOINT.METRIC",
+        "TEST.BEST_CHECKPOINT.MODE",
+        "TRAINING_PLOTS.ENABLED",
+        "TRAINING_PLOTS.PERIOD",
         "DATALOADER.NUM_WORKERS",
         "INPUT.MIN_SIZE_TRAIN",
         "INPUT.MAX_SIZE_TRAIN",
