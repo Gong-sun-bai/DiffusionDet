@@ -31,9 +31,20 @@ The installation instruction and usage are in [Getting Started with DiffusionDet
 
 本仓库的 SAR/PANDA 研究分支使用严格的实验元数据和自动输出目录。开始工作前请先阅读：
 
+- [RTX 2080 Ti 基线复现记录](docs/RTX2080Ti基线复现记录.md)
 - [项目交接与重启指南](docs/项目交接与重启指南.md)
 - [实验日志](docs/实验日志.md)
 - [Codex 项目上下文](AGENTS.md)
+
+当前工作站已创建 `Difdet` 环境并完成 Batch 16、20 iter 的 `sar-007`
+冒烟训练。首次恢复环境时执行：
+
+```bash
+PYTHONNOUSERSITE=1 conda env create -f environment.yml
+conda env config vars set PYTHONNOUSERSITE=1 -n Difdet
+conda activate Difdet
+python tools/build_detectron2_extension.py build_ext --inplace
+```
 
 本地实验配置统一位于：
 
@@ -43,8 +54,13 @@ configs/experiments/
 └── sar_ship/
     ├── sar-000.yaml ... sar-004.yaml  # 历史只读配置
     ├── sar-005.yaml                   # 固定种子正式基线
-    └── sar-006-proposals300.yaml      # 单因素消融示例
+    ├── sar-006-proposals300.yaml      # 单因素消融示例
+    └── sar-007-smoke.yaml             # 已完成的本机训练冒烟
 ```
+
+RTX 2080 Ti 的 Batch、学习率、训练长度、milestones、worker 和 AMP
+默认值集中在 `configs/machine/rtx2080ti-sar-r18.yaml`。正式实验应继承机器
+配置并分配新 ID；Batch 改变时的联动缩放规范见复现记录。
 
 启动固定种子基线：
 

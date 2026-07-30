@@ -9,6 +9,7 @@
 1. `AGENTS.md`
 2. `docs/项目交接与重启指南.md`
 3. `docs/实验日志.md`
+4. `docs/RTX2080Ti基线复现记录.md`
 
 先执行只读检查：
 
@@ -18,12 +19,15 @@ python3 tools/validate_experiment_configs.py
 python3 tools/migrate_historical_runs.py --verify
 ```
 
-不要默认当前 shell 可训练。当前系统 Python 缺 PyTorch；现有 `yolo` 环境也不是完整项目环境。恢复 `Difdet` 后必须验证：
+不要默认当前 shell 已激活训练环境。系统 Python 缺 PyTorch，`yolo` 也不是项目环境；当前可用环境是 `/home/troy/anaconda3/envs/Difdet`。激活后必须验证：
 
 ```bash
+conda activate Difdet
 python -c "import torch, torchvision, fvcore, pycocotools, timm; print(torch.__version__, torch.cuda.is_available())"
 python -c "import detectron2; from detectron2 import _C; print(detectron2.__file__, _C.__file__)"
 ```
+
+`Difdet` 已于 2026-07-23 完成 Batch 16、20 iter 的 `sar-007` 冒烟训练；当前 `_C` 为 CPU-only，普通 ROIAlign/NMS 由 TorchVision CUDA 实现。环境重建与限制见 `docs/RTX2080Ti基线复现记录.md`。
 
 ## 项目定位
 
@@ -78,6 +82,7 @@ runs/<DATASET>/<ID>__<NAME>/
 - `sar-004`：历史 MobileNetV4-Medium；
 - `sar-005`：待运行的固定种子正式基线；
 - `sar-006`：待运行的 proposals=300 单因素示例；
+- `sar-007`：已完成的 RTX 2080 Ti Batch 16 / 20 iter 冒烟，不含 AP；
 - `panda-000`：历史 PANDA 四类别基线。
 
 新增实验必须使用下一未占用序号。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
@@ -164,7 +169,7 @@ EXPERIMENT:
 
 ## 验证层级
 
-当前没有 `Difdet` 环境时允许：
+静态验证：
 
 ```bash
 python3 -m unittest tests.test_experiment -v
@@ -173,11 +178,11 @@ python3 tools/migrate_historical_runs.py --verify
 git diff --check
 ```
 
-恢复环境后按风险递进：
+激活 `Difdet` 后按风险递进：
 
 1. 导入配置、注册数据集并查询 Catalog；
 2. 构建模型，检查特征名/shape 和 checkpoint 加载；
-3. 用全新实验 ID 做短迭代 smoke test；
+3. 用全新实验 ID 做短迭代 smoke test；`sar-007` 已完成，不得覆盖；
 4. 正式训练或时间戳目录复评。
 
-历史训练峰值显存曾达 24–27 GB，而当前 RTX 2080 Ti 报告约 22.5 GB。正式训练前先做显存探测；调整 Batch 时同步审查学习率、MAX_ITER、STEPS 和 epoch 口径。
+`sar-007` 的 R18/FPN128 Batch 16 实测峰值显存为 12,626 MB；历史其他结构曾达 24–27 GB。正式训练前仍需检查显存；调整 Batch 时按复现记录同步缩放学习率、MAX_ITER、WARMUP_ITERS 和 STEPS，并使用新实验 ID。

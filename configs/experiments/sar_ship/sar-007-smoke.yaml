@@ -1,0 +1,30 @@
+_BASE_: "sar-005.yaml"
+
+# 仅验证当前工作站上的完整训练链路，不用于精度比较。
+EXPERIMENT:
+  ID: "sar-007"
+  NAME: "r18-fpn128-h128-bs16-it20-smoke-seed40244023"
+  DATASET: "sar_ship"
+  TRACK: "reproducibility"
+  KIND: "smoke"
+  BASELINE: "sar-005"
+  PURPOSE: "验证 RTX 2080 Ti 上的环境、数据、模型、反向传播与检查点链路"
+  HYPOTHESIS: "正式基线结构可用 Batch 16 连续完成短迭代训练且不发生 OOM"
+  CHANGES:
+    - "SOLVER.MAX_ITER: 397288 -> 20"
+    - "SOLVER.WARMUP_ITERS: 1000 -> 0"
+    - "SOLVER.STEPS: (278102, 357559) -> ()"
+    - "DATASETS.TEST: (sar_ship_val,) -> ()"
+  OUTPUT_ROOT: "./runs"
+
+DATASETS:
+  TEST: ()
+
+SOLVER:
+  MAX_ITER: 20
+  WARMUP_ITERS: 0
+  STEPS: ()
+  CHECKPOINT_PERIOD: 20
+
+TEST:
+  EVAL_PERIOD: 0

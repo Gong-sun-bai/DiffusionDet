@@ -48,6 +48,16 @@ def make_cfg(**overrides):
             "BASE_LR": 0.000025,
             "MAX_ITER": 397288,
             "STEPS": (278102, 357559),
+            "WARMUP_ITERS": 1000,
+            "CHECKPOINT_PERIOD": 5000,
+            "AMP": {"ENABLED": False},
+        },
+        "DATALOADER": {"NUM_WORKERS": 4},
+        "INPUT": {
+            "MIN_SIZE_TRAIN": (256, 384, 512, 640, 768, 896, 1024),
+            "MAX_SIZE_TRAIN": 1024,
+            "MIN_SIZE_TEST": 256,
+            "MAX_SIZE_TEST": 1024,
         },
         "DATASETS": {
             "TRAIN": ("sar_ship_train",),
@@ -128,6 +138,21 @@ class ValidationTests(unittest.TestCase):
             cfg["EXPERIMENT"]["CHANGES"] = ["proposals changed"]
             with self.assertRaisesRegex(ExperimentError, "CHANGES"):
                 configure_experiment(cfg, make_args(), Path(temporary))
+
+    def test_smoke_kind_is_valid_without_ablation_requirements(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cfg = make_cfg(
+                **{
+                    "EXPERIMENT.ID": "sar-007",
+                    "EXPERIMENT.KIND": "smoke",
+                    "EXPERIMENT.BASELINE": "sar-005",
+                    "SOLVER.MAX_ITER": 20,
+                    "SOLVER.STEPS": (),
+                }
+            )
+            context = configure_experiment(cfg, make_args(), Path(temporary))
+            self.assertEqual(context.metadata.kind, "smoke")
+            self.assertEqual(context.metadata.baseline, "sar-005")
 
 
 class DirectorySafetyTests(unittest.TestCase):
@@ -242,8 +267,13 @@ class ManifestTests(unittest.TestCase):
             context = configure_experiment(make_cfg(), make_args(), Path(temporary))
             initialize_experiment(context, make_cfg())
             manifest_path = context.output_dir / "experiment_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["status"], "running")
             self.assertEqual(
-                json.loads(manifest_path.read_text())["status"], "running"
+                manifest["parameters"]["DATALOADER.NUM_WORKERS"], 4
+            )
+            self.assertFalse(
+                manifest["parameters"]["SOLVER.AMP.ENABLED"]
             )
             finish_experiment(context, results={"bbox": {"AP": 66.9}})
             self.assertEqual(

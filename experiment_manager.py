@@ -25,7 +25,7 @@ EXPERIMENT_ID_RE = re.compile(r"^[a-z][a-z0-9]*-\d{3}$")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DATASET_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 CHANGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.]*:\s*.+\s+->\s+.+$")
-ALLOWED_KINDS = {"historical", "baseline", "ablation"}
+ALLOWED_KINDS = {"historical", "baseline", "ablation", "smoke"}
 PREDICTION_FILENAME = "instances_predictions.pth"
 MANIFEST_FILENAME = "experiment_manifest.json"
 SUMMARY_FILENAME = "result_summary.json"
@@ -133,7 +133,7 @@ def validate_metadata(
         raise ExperimentError("EXPERIMENT.TRACK 不能为空。")
     if metadata.kind not in ALLOWED_KINDS:
         raise ExperimentError(
-            "EXPERIMENT.KIND 只能为 historical、baseline 或 ablation。"
+            "EXPERIMENT.KIND 只能为 historical、baseline、ablation 或 smoke。"
         )
     if not metadata.purpose:
         raise ExperimentError("EXPERIMENT.PURPOSE 不能为空。")
@@ -304,7 +304,10 @@ def _environment_summary() -> dict[str, Any]:
         try:
             packages[package] = version(package)
         except PackageNotFoundError:
-            packages[package] = None
+            module = sys.modules.get(package)
+            packages[package] = (
+                getattr(module, "__version__", None) if module is not None else None
+            )
     return {
         "python": platform.python_version(),
         "python_executable": sys.executable,
@@ -331,6 +334,14 @@ def _key_parameters(cfg: Any) -> dict[str, Any]:
         "SOLVER.BASE_LR",
         "SOLVER.MAX_ITER",
         "SOLVER.STEPS",
+        "SOLVER.WARMUP_ITERS",
+        "SOLVER.CHECKPOINT_PERIOD",
+        "SOLVER.AMP.ENABLED",
+        "DATALOADER.NUM_WORKERS",
+        "INPUT.MIN_SIZE_TRAIN",
+        "INPUT.MAX_SIZE_TRAIN",
+        "INPUT.MIN_SIZE_TEST",
+        "INPUT.MAX_SIZE_TEST",
         "DATASETS.TRAIN",
         "DATASETS.TEST",
     )

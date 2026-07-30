@@ -1,0 +1,16 @@
+_BASE_: "../Base-DiffusionDet.yaml"
+
+# 当前工作站（RTX 2080 Ti 22 GB、Ryzen 5 3600）的 SAR R18 默认运行参数。
+# 模型结构和研究变量仍由具体实验配置声明；这里仅集中固化机器可用训练参数。
+DATALOADER:
+  NUM_WORKERS: 4
+
+SOLVER:
+  IMS_PER_BATCH: 16
+  BASE_LR: 0.000025
+  MAX_ITER: 397288
+  STEPS: (278102, 357559)
+  WARMUP_ITERS: 1000
+  CHECKPOINT_PERIOD: 5000
+  AMP:
+    ENABLED: False
