@@ -21,6 +21,32 @@ MANIFEST = "experiment_manifest.json"
 REQUIRED_FILES = ("config.yaml", "log.txt", "metrics.json", "last_checkpoint")
 # 训练可视化是迁移后由日志派生的便捷产物，不属于最初迁移的原始证据快照。
 DERIVED_FILES = {"results.png"}
+EXPERIMENT_DESCRIPTIONS = {
+    "sar-000": (
+        "SAR ResNet-50、FPN/HIDDEN=256、ImageNet 预训练的历史精度基线；"
+        "仅用于复评，不得重新训练。"
+    ),
+    "sar-001": (
+        "相对 sar-000 改为 ResNet-18、FPN/HIDDEN=128 并从头训练，用于验证"
+        "轻量化能否保持 SAR 精度；SEED=-1，仅作方向性参考。"
+    ),
+    "sar-002": (
+        "相对 sar-001 将 FPN/HIDDEN 降至 64、Batch 调至 64、MAX_ITER 缩至 "
+        "99400；SOLVER.STEPS 超过 MAX_ITER，结果状态为 invalid。"
+    ),
+    "sar-003": (
+        "相对 sar-000 改用 MobileNetV4-Small、FPN/HIDDEN=64 并从头训练，"
+        "用于轻量化对比；没有端侧速度证据。"
+    ),
+    "sar-004": (
+        "相对 sar-003 改用 MobileNetV4-Medium、FPN/HIDDEN=96、Batch 50 并"
+        "延长至 119280 iter；milestones 未随训练计划重算。"
+    ),
+    "panda-000": (
+        "PANDA 四类别 ResNet-50/FPN256 ImageNet 预训练历史基线；不可与 "
+        "SAR 单类别结果横向比较，仅用于复评。"
+    ),
+}
 
 RUNS = (
     {
@@ -256,13 +282,13 @@ def manifest_payload(
     repository_root: Path,
 ) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": spec["status"],
         "experiment": {
             "id": spec["id"],
             "name": spec["name"],
             "dataset": spec["dataset"],
-            "kind": "historical",
+            "description": EXPERIMENT_DESCRIPTIONS[spec["id"]],
             "config_file": spec["config"],
         },
         "migration": {
@@ -363,6 +389,23 @@ def verify(repository_root: Path) -> None:
         if not manifest_path.is_file():
             raise RuntimeError(f"缺少历史清单：{manifest_path}")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("schema_version") != 2:
+            raise RuntimeError(f"运行清单 schema 版本不是 2：{spec['id']}")
+        experiment = manifest.get("experiment", {})
+        allowed_experiment_fields = {
+            "id",
+            "name",
+            "dataset",
+            "description",
+            "config_file",
+        }
+        unexpected = set(experiment) - allowed_experiment_fields
+        if unexpected:
+            raise RuntimeError(
+                f"运行清单含意外实验字段：{spec['id']} {sorted(unexpected)}"
+            )
+        if experiment.get("description") != EXPERIMENT_DESCRIPTIONS[spec["id"]]:
+            raise RuntimeError(f"运行清单说明不一致：{spec['id']}")
         evidence = manifest["evidence"]
         if snapshot["file_count"] != evidence["raw_file_count"]:
             raise RuntimeError(f"原始文件数量变化：{spec['id']}")

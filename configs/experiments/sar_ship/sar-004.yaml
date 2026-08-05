@@ -1,115 +1,105 @@
 # 历史只读配置：原 output_mobilenetv4_medium。完全自包含；延长训练后 milestones 未重算。
-EXPERIMENT:
-  ID: "sar-004"
-  NAME: "mnv4-medium-fpn96-h96-bs50-it119280-scratch"
-  DATASET: "sar_ship"
-  TRACK: "efficiency"
-  KIND: "historical"
-  BASELINE: "sar-003"
-  PURPOSE: "记录 MobileNetV4-Medium 的历史精度与体量权衡"
-  HYPOTHESIS: "中型移动骨干可用适度参数换取更高精度"
-  CHANGES:
-    - "MODEL.MOBILENETV4.SIZE: small -> medium"
-    - "MODEL.FPN.OUT_CHANNELS: 64 -> 96"
-    - "MODEL.DiffusionDet.HIDDEN_DIM: 64 -> 96"
-    - "SOLVER.IMS_PER_BATCH: 64 -> 50"
-    - "SOLVER.MAX_ITER: 99400 -> 119280"
-  OUTPUT_ROOT: "./runs"
+EXPERIMENT: # 实验身份、研究意图和输出目录元数据。
+  ID: "sar-004" # 仓库内唯一的正式 SAR 实验编号，用于目录保护和清单记录。
+  NAME: "mnv4-medium-fpn96-h96-bs50-it119280-scratch" # 概括本次历史运行结构与训练计划的目录名后缀。
+  DATASET: "sar_ship" # 实验数据集标识，并决定 runs 下的数据集子目录。
+  DESCRIPTION: "相对 sar-003 改用 MobileNetV4-Medium、FPN/HIDDEN=96、Batch 50 并延长至 119280 iter；milestones 未随训练计划重算。" # 可选说明，仅记录实验目的、主要改动和重要限制，不参与运行逻辑。
+  OUTPUT_ROOT: "./runs" # 运行产物根目录，相对路径按仓库根目录解析。
 
-MODEL:
-  META_ARCHITECTURE: "DiffusionDet"
-  WEIGHTS: ""
-  PIXEL_MEAN: [123.675, 116.280, 103.530]
-  PIXEL_STD: [58.395, 57.120, 57.375]
-  BACKBONE:
-    NAME: "build_mobilenetv4_fpn_backbone"
-  MOBILENETV4:
-    SIZE: "medium"
-    OUT_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
-    NORM: "BN"
-    WIDTH_MULTIPLIER: 1.0
-  FPN:
-    IN_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
-    OUT_CHANNELS: 96
-  ROI_HEADS:
-    IN_FEATURES: ["p2", "p3", "p4", "p5"]
-  ROI_BOX_HEAD:
-    NUM_FC: 2
-    FC_DIM: 256
-    POOLER_TYPE: "ROIAlignV2"
-    POOLER_RESOLUTION: 7
-    POOLER_SAMPLING_RATIO: 2
-  DiffusionDet:
-    NUM_PROPOSALS: 500
-    NUM_CLASSES: 1
-    HIDDEN_DIM: 96
-    NUM_HEADS: 6
-    NUM_CLS: 1
-    NUM_REG: 3
-    NHEADS: 8
-    DIM_FEEDFORWARD: 2048
-    DROPOUT: 0.0
-    ACTIVATION: "relu"
-    NUM_DYNAMIC: 2
-    DIM_DYNAMIC: 64
-    CLASS_WEIGHT: 2.0
-    GIOU_WEIGHT: 2.0
-    L1_WEIGHT: 5.0
-    NO_OBJECT_WEIGHT: 0.1
-    DEEP_SUPERVISION: True
-    USE_FOCAL: True
-    USE_FED_LOSS: False
-    ALPHA: 0.25
-    GAMMA: 2.0
-    PRIOR_PROB: 0.01
-    OTA_K: 5
-    SNR_SCALE: 2.0
-    SAMPLE_STEP: 1
-    USE_NMS: True
+MODEL: # 模型结构、初始化权重和输入归一化设置。
+  META_ARCHITECTURE: "DiffusionDet" # 指定由注册表构建 DiffusionDet 元架构。
+  WEIGHTS: "" # 训练起始权重；空字符串表示从随机初始化开始。
+  PIXEL_MEAN: [123.675, 116.280, 103.530] # RGB 三通道像素均值，预处理时从输入图像中逐通道减去。
+  PIXEL_STD: [58.395, 57.120, 57.375] # RGB 三通道像素标准差，减均值后逐通道除以该值。
+  BACKBONE: # 主干网络构建设置。
+    NAME: "build_mobilenetv4_fpn_backbone" # 从 BACKBONE_REGISTRY 选择主干与 FPN 的构建函数。
+  MOBILENETV4: # MobileNetV4 主干的型号、输出层和宽度设置。
+    SIZE: "medium" # 选择 MobileNetV4 的 small、medium 或 large 结构规格。
+    OUT_FEATURES: ["stage1", "stage2", "stage3", "stage4"] # 输出给 FPN 的四个 MobileNetV4 阶段特征。
+    NORM: "BN" # MobileNetV4 卷积层使用的归一化类型；BN 表示 BatchNorm。
+    WIDTH_MULTIPLIER: 1.0 # 全局通道宽度倍率，1.0 表示使用标准规格。
+  FPN: # 特征金字塔的输入层和统一通道宽度设置。
+    IN_FEATURES: ["stage1", "stage2", "stage3", "stage4"] # FPN 接收的自底向上特征层，顺序需与步幅递增一致。
+    OUT_CHANNELS: 96 # 所有 FPN 输出层统一使用的通道数。
+  ROI_HEADS: # 动态检测头使用的多尺度特征设置。
+    IN_FEATURES: ["p2", "p3", "p4", "p5"] # 用于 RoI 池化的 FPN 层；p6 不参与当前检测头池化。
+  ROI_BOX_HEAD: # DiffusionDet 在此节点仅读取 RoI 池化字段；标准框头的 FC 字段不进入当前动态头。
+    NUM_FC: 2 # Detectron2 标准框头的全连接层数量；当前 DiffusionDet 动态头不读取，历史值仅作记录。
+    FC_DIM: 256 # Detectron2 标准框头的全连接层宽度；当前 DiffusionDet 动态头不读取，历史值仅作记录。
+    POOLER_TYPE: "ROIAlignV2" # 使用带半像素对齐修正的 ROIAlignV2。
+    POOLER_RESOLUTION: 7 # 将每个候选框池化为该边长的正方形特征。
+    POOLER_SAMPLING_RATIO: 2 # ROIAlign 每个输出网格沿每个维度的固定采样点数。
+  DiffusionDet: # DiffusionDet 候选框、动态头、损失、匹配和采样设置。
+    NUM_PROPOSALS: 500 # 每张图像并行扩散和细化的候选框数量。
+    NUM_CLASSES: 1 # 前景类别数；SAR 船舶数据集只有 ship 一类。
+    HIDDEN_DIM: 96 # 动态检测头、注意力和候选特征的隐藏维度，需与 FPN 宽度兼容。
+    NUM_HEADS: 6 # 级联动态检测头的细化阶段数，每个阶段都会产生预测。
+    NUM_CLS: 1 # 每个动态头中分类分支的 Linear、LayerNorm、ReLU 模块组数。
+    NUM_REG: 3 # 每个动态头中框回归分支的 Linear、LayerNorm、ReLU 模块组数。
+    NHEADS: 8 # 每个动态头内部多头自注意力的注意力头数。
+    DIM_FEEDFORWARD: 2048 # 每个动态头内部前馈网络的中间维度。
+    DROPOUT: 0.0 # 动态头自注意力和前馈网络的 dropout 概率。
+    ACTIVATION: "relu" # 动态头前馈网络的激活函数，可用 relu、gelu 或 glu。
+    NUM_DYNAMIC: 2 # 动态卷积生成的参数矩阵数量；当前结构按两层动态变换使用。
+    DIM_DYNAMIC: 64 # 动态卷积两次投影之间的瓶颈维度。
+    CLASS_WEIGHT: 2.0 # 分类项在匈牙利匹配代价和总损失中的权重。
+    GIOU_WEIGHT: 2.0 # GIoU 项在匈牙利匹配代价和总损失中的权重。
+    L1_WEIGHT: 5.0 # 边界框 L1 项在匈牙利匹配代价和总损失中的权重。
+    NO_OBJECT_WEIGHT: 0.1 # 非 focal softmax 分类中的无目标类别权重；当前 USE_FOCAL=True 时不会进入损失计算。
+    DEEP_SUPERVISION: True # 为中间细化阶段添加辅助损失，而不只监督最终阶段。
+    USE_FOCAL: True # 使用 focal loss 处理前景与背景不平衡。
+    USE_FED_LOSS: False # 是否使用面向长尾类别的 federated loss；SAR 单类实验关闭。
+    ALPHA: 0.25 # focal loss 的正负样本平衡系数。
+    GAMMA: 2.0 # focal loss 对易分类样本的降权指数。
+    PRIOR_PROB: 0.01 # 分类器初始化时采用的前景先验概率，用于设置输出偏置。
+    OTA_K: 5 # Dynamic-K 匹配为每个真值框统计的最高 IoU 候选数量。
+    SNR_SCALE: 2.0 # 将归一化框坐标映射到扩散空间 [-SNR_SCALE, SNR_SCALE] 的幅度。
+    SAMPLE_STEP: 1 # 推理阶段 DDIM 反向扩散的采样步数，不能超过训练扩散步数 1000。
+    USE_NMS: True # 推理输出前是否执行非极大值抑制去除重复框。
 
-DATASETS:
-  TRAIN: ("sar_ship_train",)
-  TEST: ("sar_ship_val",)
+DATASETS: # 训练和评估所用的已注册数据集。
+  TRAIN: ("sar_ship_train",) # 训练集 Catalog 名称；单元素元组末尾逗号不可省略。
+  TEST: ("sar_ship_val",) # 验证集 Catalog 名称，用于训练后或周期评估。
 
-DATALOADER:
-  NUM_WORKERS: 4
+DATALOADER: # 数据加载并行设置。
+  NUM_WORKERS: 4 # 每个训练进程使用的数据加载子进程数。
 
-INPUT:
-  MIN_SIZE_TRAIN: (256,)
-  MAX_SIZE_TRAIN: 256
-  MIN_SIZE_TRAIN_SAMPLING: "choice"
-  MIN_SIZE_TEST: 256
-  MAX_SIZE_TEST: 256
-  RANDOM_FLIP: "horizontal"
-  FORMAT: "RGB"
-  CROP:
-    ENABLED: True
-    TYPE: "relative_range"
-    SIZE: [0.9, 0.9]
+INPUT: # 训练与评估阶段的图像缩放、翻转、裁剪和通道格式设置。
+  MIN_SIZE_TRAIN: (256,) # 训练时目标短边尺寸候选；单元素元组表示固定短边。
+  MAX_SIZE_TRAIN: 256 # 训练缩放后长边允许的最大像素数。
+  MIN_SIZE_TRAIN_SAMPLING: "choice" # 从 MIN_SIZE_TRAIN 取值的方式；choice 表示从候选值中随机选取。
+  MIN_SIZE_TEST: 256 # 评估时图像缩放后的目标短边像素数。
+  MAX_SIZE_TEST: 256 # 评估缩放后长边允许的最大像素数。
+  RANDOM_FLIP: "horizontal" # 训练增强的随机翻转方向；horizontal 表示水平翻转。
+  FORMAT: "RGB" # 按 RGB 通道顺序读取图像，必须与像素均值和标准差顺序一致。
+  CROP: # 训练阶段的随机裁剪设置。
+    ENABLED: True # 是否启用训练随机裁剪。
+    TYPE: "relative_range" # 裁剪尺寸解释方式；relative_range 表示按相对比例范围随机采样。
+    SIZE: [0.9, 0.9] # 相对裁剪高宽的下界，0.9 表示各维随机保留原尺寸的 90%～100%。
 
-SEED: -1
-SOLVER:
-  IMS_PER_BATCH: 50
-  BASE_LR: 0.000025
-  MAX_ITER: 119280
-  CHECKPOINT_PERIOD: 10000
-  STEPS: (69580, 89514)
-  WARMUP_FACTOR: 0.01
-  WARMUP_ITERS: 1000
-  WARMUP_METHOD: "linear"
-  OPTIMIZER: "ADAMW"
-  WEIGHT_DECAY: 0.0001
-  AMP:
-    ENABLED: False
-  CLIP_GRADIENTS:
-    ENABLED: True
-    CLIP_TYPE: "full_model"
-    CLIP_VALUE: 1.0
+SEED: -1 # 随机种子；-1 表示使用非确定随机种子，是不可严格复现的历史事实。
+SOLVER: # 批量、优化器、学习率计划、检查点和梯度裁剪设置。
+  IMS_PER_BATCH: 50 # 所有 GPU 合计的每次迭代图像数；改变时通常需联动调整学习率与迭代数。
+  BASE_LR: 0.000025 # warmup 结束后的基础学习率。
+  MAX_ITER: 119280 # 训练的最大优化迭代次数。
+  CHECKPOINT_PERIOD: 10000 # 每隔多少次迭代保存一次周期检查点。
+  STEPS: (69580, 89514) # 历史训练延长后未重算的学习率里程碑；约位于 MAX_ITER 的 58% 和 75%。
+  WARMUP_FACTOR: 0.01 # warmup 起始学习率相对 BASE_LR 的倍率。
+  WARMUP_ITERS: 1000 # 学习率 warmup 持续的迭代次数。
+  WARMUP_METHOD: "linear" # warmup 插值方式；linear 表示线性升至基础学习率。
+  OPTIMIZER: "ADAMW" # 使用解耦权重衰减的 AdamW 优化器。
+  WEIGHT_DECAY: 0.0001 # 对可衰减模型参数施加的 L2/AdamW 权重衰减系数。
+  AMP: # 自动混合精度训练设置。
+    ENABLED: False # 是否启用自动混合精度；False 表示使用常规精度训练。
+  CLIP_GRADIENTS: # 梯度裁剪设置，用于抑制过大的参数更新。
+    ENABLED: True # 是否启用梯度裁剪。
+    CLIP_TYPE: "full_model" # full_model 表示按整个模型的全局梯度范数统一裁剪。
+    CLIP_VALUE: 1.0 # 全局梯度范数的最大允许值。
 
-TEST:
-  EVAL_PERIOD: 0
-  DETECTIONS_PER_IMAGE: 100
-  AUG:
-    ENABLED: False
+TEST: # 训练期间和训练结束后的评估设置。
+  EVAL_PERIOD: 0 # 训练中每隔多少 iter 运行验证；0 表示禁用周期评估。
+  DETECTIONS_PER_IMAGE: 100 # TTA 合并路径每图最多保留数；普通 DiffusionDet 推理由 NUM_PROPOSALS 控制候选上限。
+  AUG: # 测试时增强设置。
+    ENABLED: False # 是否启用多尺度或翻转测试时增强；False 表示单尺度评估。
 
-VERSION: 2
+VERSION: 2 # Detectron2 配置格式版本，加载旧版配置时用于兼容转换。

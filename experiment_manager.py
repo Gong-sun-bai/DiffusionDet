@@ -26,8 +26,6 @@ EXPERIMENT_ID_RE = re.compile(
 )
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DATASET_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-CHANGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.]*:\s*.+\s+->\s+.+$")
-ALLOWED_KINDS = {"historical", "baseline", "ablation", "smoke"}
 PREDICTION_FILENAME = "instances_predictions.pth"
 MODEL_WEIGHT_FILENAMES = {
     "model_best.pth",
@@ -36,7 +34,8 @@ MODEL_WEIGHT_FILENAMES = {
 }
 MANIFEST_FILENAME = "experiment_manifest.json"
 SUMMARY_FILENAME = "result_summary.json"
-SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
+SUMMARY_SCHEMA_VERSION = 1
 
 
 class ExperimentError(ValueError):
@@ -48,12 +47,7 @@ class ExperimentMetadata:
     experiment_id: str
     name: str
     dataset: str
-    track: str
-    kind: str
-    baseline: str
-    purpose: str
-    hypothesis: str
-    changes: tuple[str, ...]
+    description: str
     output_root: str
 
 
@@ -93,17 +87,11 @@ def _get(node: Any, key: str, default: Any = None) -> Any:
 
 
 def metadata_from_cfg(cfg: Any) -> ExperimentMetadata:
-    changes = _get(cfg, "EXPERIMENT.CHANGES", ())
     return ExperimentMetadata(
         experiment_id=str(_get(cfg, "EXPERIMENT.ID", "")).strip(),
         name=str(_get(cfg, "EXPERIMENT.NAME", "")).strip(),
         dataset=str(_get(cfg, "EXPERIMENT.DATASET", "")).strip(),
-        track=str(_get(cfg, "EXPERIMENT.TRACK", "")).strip(),
-        kind=str(_get(cfg, "EXPERIMENT.KIND", "")).strip(),
-        baseline=str(_get(cfg, "EXPERIMENT.BASELINE", "")).strip(),
-        purpose=str(_get(cfg, "EXPERIMENT.PURPOSE", "")).strip(),
-        hypothesis=str(_get(cfg, "EXPERIMENT.HYPOTHESIS", "")).strip(),
-        changes=tuple(str(item).strip() for item in changes),
+        description=str(_get(cfg, "EXPERIMENT.DESCRIPTION", "") or "").strip(),
         output_root=str(_get(cfg, "EXPERIMENT.OUTPUT_ROOT", "./runs")).strip(),
     )
 
@@ -125,10 +113,6 @@ def validate_experiment_id(experiment_id: str) -> None:
 
 def validate_metadata(
     metadata: ExperimentMetadata,
-    *,
-    seed: int,
-    max_iter: int,
-    steps: Iterable[int],
 ) -> None:
     validate_experiment_id(metadata.experiment_id)
     validate_slug(metadata.name)
@@ -140,45 +124,23 @@ def validate_metadata(
         raise ExperimentError(
             "EXPERIMENT.ID 前缀必须与 EXPERIMENT.DATASET 的短名一致。"
         )
-    if not metadata.track:
-        raise ExperimentError("EXPERIMENT.TRACK 不能为空。")
-    if metadata.kind not in ALLOWED_KINDS:
-        raise ExperimentError(
-            "EXPERIMENT.KIND 只能为 historical、baseline、ablation 或 smoke。"
-        )
-    is_test_id = id_match is not None and id_match.group("test") is not None
-    if metadata.kind == "smoke" and not is_test_id:
-        raise ExperimentError(
-            "KIND=smoke 必须使用 <数据集短名>-test-<三位序号> 测试实验 ID。"
-        )
-    if metadata.kind != "smoke" and is_test_id:
-        raise ExperimentError(
-            "测试实验 ID 仅允许用于 KIND=smoke，不能用于正式实验或历史实验。"
-        )
-    if not metadata.purpose:
-        raise ExperimentError("EXPERIMENT.PURPOSE 不能为空。")
-    if not metadata.hypothesis:
-        raise ExperimentError("EXPERIMENT.HYPOTHESIS 不能为空。")
     if not metadata.output_root:
         raise ExperimentError("EXPERIMENT.OUTPUT_ROOT 不能为空。")
-    if metadata.kind != "historical" and seed < 0:
-        raise ExperimentError("非历史实验必须设置固定的非负 SEED。")
+
+
+def validate_training_parameters(
+    *,
+    seed: int,
+    max_iter: int,
+    steps: Iterable[int],
+) -> None:
+    if seed < 0:
+        raise ExperimentError("训练或续训必须设置固定的非负 SEED。")
     invalid_steps = [int(step) for step in steps if int(step) >= int(max_iter)]
-    if metadata.kind != "historical" and invalid_steps:
+    if invalid_steps:
         raise ExperimentError(
             f"所有 SOLVER.STEPS 必须小于 SOLVER.MAX_ITER；无效值：{invalid_steps}"
         )
-    if metadata.kind == "ablation":
-        if not metadata.baseline:
-            raise ExperimentError("消融实验必须填写 EXPERIMENT.BASELINE。")
-        if not metadata.changes:
-            raise ExperimentError("消融实验必须填写 EXPERIMENT.CHANGES。")
-        malformed = [item for item in metadata.changes if not CHANGE_RE.fullmatch(item)]
-        if malformed:
-            raise ExperimentError(
-                "EXPERIMENT.CHANGES 必须使用“配置键: 旧值 -> 新值”格式："
-                + repr(malformed)
-            )
 
 
 def option_was_explicit(options: Sequence[str], key: str) -> bool:
@@ -261,15 +223,6 @@ def configure_experiment(
 ) -> ExperimentContext:
     repository_root = Path(repository_root).resolve()
     metadata = metadata_from_cfg(cfg)
-    validate_metadata(
-        metadata,
-        seed=int(_get(cfg, "SEED", -1)),
-        max_iter=int(_get(cfg, "SOLVER.MAX_ITER", 0)),
-        steps=_get(cfg, "SOLVER.STEPS", ()),
-    )
-    validate_checkpoint_policy(cfg)
-    validate_training_plot_policy(cfg)
-
     eval_only = bool(getattr(args, "eval_only", False))
     resume = bool(getattr(args, "resume", False))
     options = tuple(getattr(args, "opts", ()) or ())
@@ -277,8 +230,15 @@ def configure_experiment(
         raise ExperimentError("--eval-only 与 --resume 不能同时使用。")
 
     mode = "evaluation" if eval_only else ("resume" if resume else "train")
-    if metadata.kind == "historical" and mode != "evaluation":
-        raise ExperimentError("历史配置禁止重新训练，只允许显式权重评估。")
+    validate_metadata(metadata)
+    if mode != "evaluation":
+        validate_training_parameters(
+            seed=int(_get(cfg, "SEED", -1)),
+            max_iter=int(_get(cfg, "SOLVER.MAX_ITER", 0)),
+            steps=_get(cfg, "SOLVER.STEPS", ()),
+        )
+    validate_checkpoint_policy(cfg)
+    validate_training_plot_policy(cfg)
 
     weights = str(_get(cfg, "MODEL.WEIGHTS", "") or "")
     validate_weights(weights)
@@ -460,18 +420,13 @@ def initialize_experiment(context: ExperimentContext, cfg: Any) -> dict[str, Any
             execution_history.append(previous["execution"])
     started_at = utc_now().isoformat()
     payload = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": MANIFEST_SCHEMA_VERSION,
         "status": "running",
         "experiment": {
             "id": context.metadata.experiment_id,
             "name": context.metadata.name,
             "dataset": context.metadata.dataset,
-            "track": context.metadata.track,
-            "kind": context.metadata.kind,
-            "baseline": context.metadata.baseline or None,
-            "purpose": context.metadata.purpose,
-            "hypothesis": context.metadata.hypothesis,
-            "changes": list(context.metadata.changes),
+            "description": context.metadata.description or None,
         },
         "execution": {
             "mode": context.mode,
@@ -523,7 +478,7 @@ def finish_experiment(
         atomic_write_json(
             context.output_dir / SUMMARY_FILENAME,
             {
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": SUMMARY_SCHEMA_VERSION,
                 "experiment_id": context.metadata.experiment_id,
                 "status": "completed",
                 "finished_at": payload["execution"]["finished_at"],

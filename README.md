@@ -46,21 +46,25 @@ conda activate Difdet
 python tools/build_detectron2_extension.py build_ext --inplace
 ```
 
-本地实验配置统一位于：
+本地实验配置的继承关系如下：
 
 ```text
-configs/experiments/
-├── panda/panda-000.yaml
-└── sar_ship/
-    ├── sar-000.yaml ... sar-004.yaml  # 独立、历史只读配置
-    ├── sar-005.yaml                   # 固定种子多尺度实验
-    ├── sar-006-fixed256.yaml          # 已完成的固定 256 可重复基线
-    └── sar-test-001-smoke.yaml        # 已完成的本机训练冒烟
+configs/
+├── Base-DiffusionDet.yaml                         # DiffusionDet 公共默认值
+├── machine/Rtx2080ti-Base-DiffusionDet.yaml       # 本机三个 SAR 实验的公共父配置
+└── experiments/
+    ├── panda/panda-000.yaml
+    └── sar_ship/
+        ├── sar-000.yaml ... sar-004.yaml          # 独立、历史只读配置
+        ├── sar-005.yaml                           # 固定种子多尺度实验
+        ├── sar-006-fixed256.yaml                  # 已完成的固定 256 可重复基线
+        └── sar-test-001-smoke.yaml                # 已完成的本机训练冒烟
 ```
 
-RTX 2080 Ti 的 Batch、学习率、训练长度、milestones、worker 和 AMP
-默认值集中在 `configs/machine/rtx2080ti-sar-r18.yaml`。正式实验应继承机器
-配置并分配新 ID；Batch 改变时的联动缩放规范见复现记录。
+RTX 2080 Ti 的 R18/FPN128 模型、SAR 数据集、固定种子、Batch、学习率、
+训练长度、milestones、worker 和 AMP 公共值集中在
+`configs/machine/Rtx2080ti-Base-DiffusionDet.yaml`。本机实验应直接继承该
+父配置并只覆盖实验差异；Batch 改变时的联动缩放规范见复现记录。
 
 复评固定 256 基线的最佳权重：
 

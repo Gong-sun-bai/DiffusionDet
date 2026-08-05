@@ -90,7 +90,7 @@ runs/sar_ship/sar-003__mnv4-small-fpn64-h64-bs64-it99400-scratch/
 3. 一次只改一个概念因素；
 4. 固定 `SEED=40244023`；
 5. 保持所有 `SOLVER.STEPS < SOLVER.MAX_ITER`；
-6. 在 `EXPERIMENT.CHANGES` 中写明 `配置键: 旧值 -> 新值`。
+6. 在可选的 `EXPERIMENT.DESCRIPTION` 中简要写明对照实验、主要改动、实验目的和重要限制。
 
 建议将下列因素分开验证：
 

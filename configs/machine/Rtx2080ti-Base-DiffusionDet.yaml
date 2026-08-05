@@ -1,0 +1,35 @@
+_BASE_: "../Base-DiffusionDet.yaml" # 继承 DiffusionDet 公共模型、输入预处理和优化器默认值。
+
+# RTX 2080 Ti 本地 SAR 实验的公共父配置。
+# 三个已完成实验只在各自 YAML 中覆盖与本配置不同的参数；结果事实以 runs 下冻结 config.yaml 为准。
+MODEL: # 三个本地实验共同使用的 R18、FPN128 和单类 DiffusionDet 结构。
+  WEIGHTS: "" # 不加载预训练或旧检查点，从随机初始化开始训练。
+  RESNETS: # ResNet-18 主干结构设置。
+    DEPTH: 18 # 使用 ResNet-18。
+    STRIDE_IN_1X1: False # R18 BasicBlock 会忽略此项；保留 False 以匹配三个实验的冻结配置。
+    RES2_OUT_CHANNELS: 64 # res2 输出 64 通道；R18/R34 必须使用该值。
+  FPN: # 特征金字塔宽度设置。
+    OUT_CHANNELS: 128 # 将所有 FPN 输出层统一为 128 通道。
+  DiffusionDet: # DiffusionDet 候选框、类别和检测头维度设置。
+    NUM_PROPOSALS: 500 # 每张图像并行扩散和细化的候选框数量。
+    NUM_CLASSES: 1 # 前景类别数；SAR 船舶数据集只有 ship 一类。
+    HIDDEN_DIM: 128 # 动态检测头、注意力和候选特征的隐藏维度，与 FPN 宽度一致。
+
+DATASETS: # 本地 2080 Ti SAR 实验共同使用的数据集。
+  TRAIN: ("sar_ship_train",) # 训练集 Catalog 名称；单元素元组末尾逗号不可省略。
+  TEST: ("sar_ship_val",) # 默认验证集 Catalog 名称；不评估的冒烟配置会显式清空。
+
+DATALOADER: # 当前工作站的数据加载并行设置。
+  NUM_WORKERS: 4 # 每个训练进程使用 4 个数据加载子进程。
+
+SEED: 40244023 # 固定 Python、NumPy 与 PyTorch 等随机源，支持重复实验。
+
+SOLVER: # RTX 2080 Ti 的默认 Batch、学习率、训练长度和检查点设置。
+  IMS_PER_BATCH: 16 # 单 GPU 每次迭代默认使用 16 张图像。
+  BASE_LR: 0.000025 # Batch 16 对应的基础学习率。
+  MAX_ITER: 397288 # Batch 16 下约 200 次数据遍历对应的最大迭代数。
+  STEPS: (278102, 357559) # 分别约在总迭代的 70% 和 90% 处衰减学习率。
+  WARMUP_ITERS: 1000 # 学习率 warmup 持续 1000 次迭代。
+  CHECKPOINT_PERIOD: 5000 # 默认每 5000 次迭代保存一次周期检查点。
+  AMP: # 自动混合精度训练设置。
+    ENABLED: False # 使用常规精度训练；启用 AMP 必须作为独立实验变量。

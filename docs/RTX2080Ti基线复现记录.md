@@ -98,7 +98,10 @@ SAR 基线使用的普通 ROIAlign 和 NMS 来自 TorchVision，已由 20-iter G
 - 设备：`cuda:0`
 - FPN 输出：`p2–p6`，通道均为 128，stride 为 4/8/16/32/64
 
-本机正式默认配置位于 `configs/machine/rtx2080ti-sar-r18.yaml`：
+本机三个已完成实验直接继承的公共父配置位于
+`configs/machine/Rtx2080ti-Base-DiffusionDet.yaml`。该配置在
+`configs/Base-DiffusionDet.yaml` 之上统一声明 R18/FPN128、SAR 数据集、固定种子
+和下列机器默认参数：
 
 | 参数 | 默认值 |
 | --- | ---: |
@@ -111,7 +114,12 @@ SAR 基线使用的普通 ROIAlign 和 NMS 来自 TorchVision，已由 20-iter G
 | `DATALOADER.NUM_WORKERS` | 4 |
 | `SOLVER.AMP.ENABLED` | False |
 
-`sar-005` 和后续实验均继承这层机器配置，但具体实验可以显式覆盖。`sar-005` 的冻结实际值为 Batch 25、`BASE_LR=3.5e-5`、254,264 iter 和 milestones 177,985/228,838；机器层默认值不能替代运行目录内的冻结配置。
+`sar-005`、`sar-006` 和 `sar-test-001` 均直接继承这层公共父配置，只在各自
+YAML 中保留差异。`sar-005` 的冻结实际值为 Batch 25、`BASE_LR=3.5e-5`、
+254,264 iter、milestones 177,985/228,838 和 `CHECKPOINT_PERIOD=2000`；
+`sar-006` 使用相同 Batch/LR/Iter/Steps，但检查点周期为 5000；`sar-test-001`
+使用父配置的 Batch 16 与 `BASE_LR=2.5e-5`。父配置默认值不能替代运行目录内的
+冻结配置，各子配置展开后必须与对应冻结配置逐键核对。
 
 ## 5. `sar-test-001` 冒烟结果
 
@@ -189,8 +197,9 @@ python train_net.py --num-gpus 1 \
 ### 7.1 实验身份
 
 - 正式实验必须分配新的未占用 ID；当前 `sar-000` 至 `sar-006` 已占用，下一编号为 `sar-007`。
-- `smoke` 使用 `<dataset>-test-NNN`，只验证运行链路，不进入 AP 排名，也不能充当消融基线；下一测试编号为 `sar-test-002`。
-- 一次实验只改变一个概念因素。结构兼容所需的成组参数必须在 `PURPOSE`、`HYPOTHESIS` 和 `CHANGES` 中说明。
+- `smoke` 直接使用 `<dataset>-test-NNN`，只验证运行链路，不进入 AP 排名，也不能充当消融基线；下一测试编号为 `sar-test-002`。
+- `EXPERIMENT.DESCRIPTION` 是可选自由文本，用于简要记录对照实验、主要改动、目的和限制，不参与运行逻辑。
+- 一次实验只改变一个概念因素。结构兼容所需的成组参数必须在 `DESCRIPTION` 和实验日志中说明。
 - 不在模型源码中按实验 ID 写条件分支；新增行为应使用语义明确、默认保持旧行为的配置开关。
 - 不通过命令行临时覆盖正式实验超参数；先创建配置并通过静态校验。
 
@@ -225,7 +234,7 @@ SOLVER:
   STEPS: (556203, 715118)
 ```
 
-Batch 改变必须使用新实验 ID，并在 `CHANGES` 中同时记录 Batch、学习率、迭代数、warmup 和 milestones。若研究目标本身就是 Batch 或学习率，则不能把这些联动变化称为单因素硬件适配，应单独定义实验假设。
+Batch 改变必须使用新实验 ID，并在 `DESCRIPTION` 中概括 Batch、学习率、迭代数、warmup 和 milestones 的联动变化。若研究目标本身就是 Batch 或学习率，则不能把这些联动变化称为单因素硬件适配，应单独定义实验假设。
 
 ### 7.3 其他因素
 

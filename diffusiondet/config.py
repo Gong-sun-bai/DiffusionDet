@@ -84,12 +84,7 @@ def add_diffusiondet_config(cfg):
     cfg.EXPERIMENT.ID = ""
     cfg.EXPERIMENT.NAME = ""
     cfg.EXPERIMENT.DATASET = ""
-    cfg.EXPERIMENT.TRACK = ""
-    cfg.EXPERIMENT.KIND = ""
-    cfg.EXPERIMENT.BASELINE = ""
-    cfg.EXPERIMENT.PURPOSE = ""
-    cfg.EXPERIMENT.HYPOTHESIS = ""
-    cfg.EXPERIMENT.CHANGES = []
+    cfg.EXPERIMENT.DESCRIPTION = ""
     cfg.EXPERIMENT.OUTPUT_ROOT = "./runs"
 
     # TTA.

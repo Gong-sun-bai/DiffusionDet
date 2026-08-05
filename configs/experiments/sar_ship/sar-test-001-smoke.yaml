@@ -1,30 +1,18 @@
-_BASE_: "sar-005.yaml"
+_BASE_: "../../machine/Rtx2080ti-Base-DiffusionDet.yaml" # 直接继承历史运行对应的 Batch 16、2.5e-5 学习率及 R18/FPN128 公共设置。
 
 # 仅验证当前工作站上的完整训练链路，不用于精度比较。
-EXPERIMENT:
-  ID: "sar-test-001"
-  NAME: "r18-fpn128-h128-bs16-it20-smoke-seed40244023"
-  DATASET: "sar_ship"
-  TRACK: "reproducibility"
-  KIND: "smoke"
-  BASELINE: "sar-005"
-  PURPOSE: "验证 RTX 2080 Ti 上的环境、数据、模型、反向传播与检查点链路"
-  HYPOTHESIS: "正式基线结构可用 Batch 16 连续完成短迭代训练且不发生 OOM"
-  CHANGES:
-    - "SOLVER.MAX_ITER: 397288 -> 20"
-    - "SOLVER.WARMUP_ITERS: 1000 -> 0"
-    - "SOLVER.STEPS: (278102, 357559) -> ()"
-    - "DATASETS.TEST: (sar_ship_val,) -> ()"
-  OUTPUT_ROOT: "./runs"
+EXPERIMENT: # 冒烟实验身份、验证目标和输出目录元数据。
+  ID: "sar-test-001" # 唯一的 SAR 测试序号；test ID 不进入正式实验排名。
+  NAME: "r18-fpn128-h128-bs16-it20-smoke-seed40244023" # 概括历史运行的结构、Batch 16、20 iter 用途和固定种子。
+  DATASET: "sar_ship" # 实验数据集标识，并决定 runs 下的数据集子目录。
+  DESCRIPTION: "基于 RTX 2080 Ti 公共 R18/FPN128 配置，以 Batch 16 运行 20 iter 且不做验证，用于检查环境、数据、反向传播和检查点链路。" # 可选说明，仅记录测试目的、主要设置和边界，不参与运行逻辑。
+  OUTPUT_ROOT: "./runs" # 运行产物根目录，相对路径按仓库根目录解析。
 
-DATASETS:
-  TEST: ()
+DATASETS: # 覆盖继承配置中的评估数据集。
+  TEST: () # 不注册本次运行的评估任务，仅执行训练链路冒烟。
 
-SOLVER:
-  MAX_ITER: 20
-  WARMUP_ITERS: 0
-  STEPS: ()
-  CHECKPOINT_PERIOD: 20
-
-TEST:
-  EVAL_PERIOD: 0
+SOLVER: # 只覆盖相对 2080 Ti 公共父配置不同的短运行参数。
+  MAX_ITER: 20 # 只执行 20 次优化迭代。
+  WARMUP_ITERS: 0 # 禁用学习率 warmup。
+  STEPS: () # 不执行阶段性学习率衰减。
+  CHECKPOINT_PERIOD: 20 # 在短运行末尾触发一次周期检查点保存。

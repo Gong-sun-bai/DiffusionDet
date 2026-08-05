@@ -5,12 +5,7 @@ EXPERIMENT:
   ID: "panda-000"
   NAME: "r50-fpn256-h256-bs16-it49063-pretrain"
   DATASET: "panda"
-  TRACK: "accuracy"
-  KIND: "historical"
-  BASELINE: ""
-  PURPOSE: "保存 PANDA 四类别检测历史基线"
-  HYPOTHESIS: "ResNet-50 DiffusionDet 可建立 PANDA 四类别参考结果"
-  CHANGES: []
+  DESCRIPTION: "PANDA 四类别 ResNet-50/FPN256 ImageNet 预训练历史基线；不可与 SAR 单类别结果横向比较，仅用于复评。"
   OUTPUT_ROOT: "./runs"
 
 MODEL:

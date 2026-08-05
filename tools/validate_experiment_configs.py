@@ -18,6 +18,7 @@ from experiment_manager import (
     metadata_from_cfg,
     validate_checkpoint_policy,
     validate_metadata,
+    validate_training_parameters,
     validate_training_plot_policy,
     validate_weights,
 )
@@ -119,6 +120,70 @@ COMMON_HISTORICAL_EXPECTATIONS = {
     "SEED": -1,
 }
 
+RTX2080TI_BASE_REFERENCE = "../../machine/Rtx2080ti-Base-DiffusionDet.yaml"
+RTX2080TI_EXPERIMENT_IDS = {"sar-005", "sar-006", "sar-test-001"}
+COMMON_RTX2080TI_EXPECTATIONS = {
+    "MODEL.WEIGHTS": "",
+    "MODEL.RESNETS.DEPTH": 18,
+    "MODEL.RESNETS.STRIDE_IN_1X1": False,
+    "MODEL.RESNETS.RES2_OUT_CHANNELS": 64,
+    "MODEL.FPN.OUT_CHANNELS": 128,
+    "MODEL.DiffusionDet.NUM_PROPOSALS": 500,
+    "MODEL.DiffusionDet.NUM_CLASSES": 1,
+    "MODEL.DiffusionDet.HIDDEN_DIM": 128,
+    "DATASETS.TRAIN": ("sar_ship_train",),
+    "DATALOADER.NUM_WORKERS": 4,
+    "SEED": 40244023,
+    "INPUT.MIN_SIZE_TEST": 256,
+    "SOLVER.AMP.ENABLED": False,
+}
+RTX2080TI_EXPERIMENT_EXPECTATIONS = {
+    "sar-005": {
+        "DATASETS.TEST": ("sar_ship_val",),
+        "INPUT.MIN_SIZE_TRAIN": (256, 384, 512, 640, 768, 896, 1024),
+        "INPUT.MAX_SIZE_TRAIN": 1024,
+        "INPUT.MAX_SIZE_TEST": 1024,
+        "SOLVER.IMS_PER_BATCH": 25,
+        "SOLVER.BASE_LR": 0.000035,
+        "SOLVER.MAX_ITER": 254264,
+        "SOLVER.STEPS": (177985, 228838),
+        "SOLVER.WARMUP_ITERS": 1000,
+        "SOLVER.CHECKPOINT_PERIOD": 2000,
+    },
+    "sar-006": {
+        "DATASETS.TEST": ("sar_ship_val",),
+        "INPUT.MIN_SIZE_TRAIN": (256,),
+        "INPUT.MAX_SIZE_TRAIN": 256,
+        "INPUT.MAX_SIZE_TEST": 256,
+        "SOLVER.IMS_PER_BATCH": 25,
+        "SOLVER.BASE_LR": 0.000035,
+        "SOLVER.MAX_ITER": 254264,
+        "SOLVER.STEPS": (177985, 228838),
+        "SOLVER.WARMUP_ITERS": 1000,
+        "SOLVER.CHECKPOINT_PERIOD": 5000,
+        "SOLVER.CHECKPOINT_RETENTION": "latest",
+        "TEST.EVAL_PERIOD": 5000,
+        "TEST.BEST_CHECKPOINT.ENABLED": True,
+    },
+    "sar-test-001": {
+        "DATASETS.TEST": (),
+        "INPUT.MIN_SIZE_TRAIN": (256, 384, 512, 640, 768, 896, 1024),
+        "INPUT.MAX_SIZE_TRAIN": 1024,
+        "INPUT.MAX_SIZE_TEST": 1024,
+        "SOLVER.IMS_PER_BATCH": 16,
+        "SOLVER.BASE_LR": 0.000025,
+        "SOLVER.MAX_ITER": 20,
+        "SOLVER.STEPS": (),
+        "SOLVER.WARMUP_ITERS": 0,
+        "SOLVER.CHECKPOINT_PERIOD": 20,
+    },
+}
+RTX2080TI_ALLOWED_CHILD_SECTIONS = {
+    "sar-005": {"SOLVER"},
+    "sar-006": {"INPUT", "SOLVER", "TEST"},
+    "sar-test-001": {"DATASETS", "SOLVER"},
+}
+
 
 def as_sequence(value):
     if isinstance(value, str):
@@ -139,6 +204,16 @@ def normalized_value(value):
     if isinstance(value, list):
         return tuple(value)
     return value
+
+
+def flattened_leaves(value, prefix=""):
+    if not isinstance(value, dict):
+        return {prefix: value}
+    leaves = {}
+    for key, child in value.items():
+        child_prefix = f"{prefix}.{key}" if prefix else key
+        leaves.update(flattened_leaves(child, child_prefix))
+    return leaves
 
 
 def deep_merge(base, override):
@@ -199,7 +274,6 @@ def main() -> int:
             errors.append(f"{path.relative_to(root)}: {error}")
 
     ids = {}
-    historical_ids = set()
     sar_formal_ids = set()
     sar_test_ids = set()
     for path in sorted(experiment_root.rglob("*.yaml")):
@@ -213,12 +287,13 @@ def main() -> int:
                     f"实验 ID 与 {ids[metadata.experiment_id]} 重复"
                 )
             ids[metadata.experiment_id] = relative
-            validate_metadata(
-                metadata,
-                seed=int(config.get("SEED", -1)),
-                max_iter=int(config["SOLVER"]["MAX_ITER"]),
-                steps=as_sequence(config["SOLVER"].get("STEPS", ())),
-            )
+            validate_metadata(metadata)
+            if metadata.experiment_id not in EXPECTED_HISTORICAL_IDS:
+                validate_training_parameters(
+                    seed=int(config.get("SEED", -1)),
+                    max_iter=int(config["SOLVER"]["MAX_ITER"]),
+                    steps=as_sequence(config["SOLVER"].get("STEPS", ())),
+                )
             validate_checkpoint_policy(config)
             validate_training_plot_policy(config)
             validate_weights(str(config.get("MODEL", {}).get("WEIGHTS", "")))
@@ -229,8 +304,6 @@ def main() -> int:
                     sar_test_ids.add(metadata.experiment_id)
                 else:
                     sar_formal_ids.add(metadata.experiment_id)
-            if metadata.kind == "historical":
-                historical_ids.add(metadata.experiment_id)
             if metadata.experiment_id in STANDALONE_HISTORICAL_IDS:
                 if "_BASE_" in raw:
                     raise ExperimentError("SAR 历史配置必须完全自包含，不得使用 _BASE_。")
@@ -245,22 +318,62 @@ def main() -> int:
                             f"历史训练值不一致：{key} expected={expected!r}, "
                             f"actual={actual!r}"
                         )
-            if metadata.kind == "ablation":
-                if metadata.baseline not in ids and not any(
-                    candidate.name.startswith(metadata.baseline)
-                    for candidate in experiment_root.rglob("*.yaml")
-                ):
+            if metadata.experiment_id in RTX2080TI_EXPERIMENT_IDS:
+                if raw.get("_BASE_") != RTX2080TI_BASE_REFERENCE:
                     raise ExperimentError(
-                        f"消融基线不存在：{metadata.baseline}"
+                        "本机 RTX 2080 Ti 实验必须直接继承 "
+                        f"{RTX2080TI_BASE_REFERENCE}。"
                     )
+                allowed_sections = {
+                    "_BASE_",
+                    "EXPERIMENT",
+                    *RTX2080TI_ALLOWED_CHILD_SECTIONS[
+                        metadata.experiment_id
+                    ],
+                }
+                unexpected_sections = set(raw) - allowed_sections
+                if unexpected_sections:
+                    raise ExperimentError(
+                        "本机实验子配置含非差异顶层字段："
+                        f"{sorted(unexpected_sections)}"
+                    )
+                expectations = {
+                    **COMMON_RTX2080TI_EXPECTATIONS,
+                    **RTX2080TI_EXPERIMENT_EXPECTATIONS[
+                        metadata.experiment_id
+                    ],
+                }
+                for key, expected in expectations.items():
+                    actual = normalized_value(nested_value(config, key))
+                    if actual != expected:
+                        raise ExperimentError(
+                            f"本机冻结训练值不一致：{key} "
+                            f"expected={expected!r}, actual={actual!r}"
+                        )
+                base_path = (path.parent / raw["_BASE_"]).resolve()
+                base_config = resolved_config(base_path)
+                child_values = {
+                    key: value
+                    for key, value in raw.items()
+                    if key not in {"_BASE_", "EXPERIMENT"}
+                }
+                for key, value in flattened_leaves(child_values).items():
+                    try:
+                        inherited = nested_value(base_config, key)
+                    except KeyError:
+                        continue
+                    if normalized_value(value) == normalized_value(inherited):
+                        raise ExperimentError(
+                            f"本机实验子配置包含与父配置相同的冗余参数：{key}"
+                        )
         except Exception as error:
             errors.append(f"{relative}: {error}")
 
-    if historical_ids != EXPECTED_HISTORICAL_IDS:
+    missing_historical_ids = EXPECTED_HISTORICAL_IDS - set(ids)
+    if missing_historical_ids:
         errors.append(
             "历史配置集合不完整："
-            f"expected={sorted(EXPECTED_HISTORICAL_IDS)}, "
-            f"actual={sorted(historical_ids)}"
+            f"missing={sorted(missing_historical_ids)}"
         )
     if sar_formal_ids != EXPECTED_SAR_FORMAL_IDS:
         errors.append(

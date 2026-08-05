@@ -1,43 +1,43 @@
 # DiffusionDet 公共模型与输入默认值。
 # 本地实验必须在 configs/experiments/ 中覆盖数据集、训练计划和 EXPERIMENT 元数据。
-MODEL:
-  META_ARCHITECTURE: "DiffusionDet"
-  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl" # 使用 ImageNet 预训练权重
-  PIXEL_MEAN: [123.675, 116.280, 103.530]
-  PIXEL_STD: [58.395, 57.120, 57.375]
-  BACKBONE:
-    NAME: "build_resnet_fpn_backbone"
-  RESNETS:
-    OUT_FEATURES: ["res2", "res3", "res4", "res5"]
-  FPN:
-    IN_FEATURES: ["res2", "res3", "res4", "res5"]
-  ROI_HEADS:
-    IN_FEATURES: ["p2", "p3", "p4", "p5"]
-  ROI_BOX_HEAD:
-    POOLER_TYPE: "ROIAlignV2"
-    POOLER_RESOLUTION: 7
-    POOLER_SAMPLING_RATIO: 2
+MODEL: # 模型结构、初始化权重和输入归一化设置。
+  META_ARCHITECTURE: "DiffusionDet" # 指定由注册表构建 DiffusionDet 元架构。
+  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl" # 使用 TorchVision ResNet-50 的 ImageNet 预训练权重初始化模型。
+  PIXEL_MEAN: [123.675, 116.280, 103.530] # RGB 三通道像素均值，预处理时从输入图像中逐通道减去。
+  PIXEL_STD: [58.395, 57.120, 57.375] # RGB 三通道像素标准差，减均值后逐通道除以该值。
+  BACKBONE: # 主干网络构建设置。
+    NAME: "build_resnet_fpn_backbone" # 使用 ResNet 与 FPN 组合的主干构建函数。
+  RESNETS: # ResNet 主干设置。
+    OUT_FEATURES: ["res2", "res3", "res4", "res5"] # 输出给 FPN 的四个 ResNet 阶段特征。
+  FPN: # 特征金字塔网络设置。
+    IN_FEATURES: ["res2", "res3", "res4", "res5"] # FPN 接收的自底向上特征层，顺序需与步幅递增一致。
+  ROI_HEADS: # 检测头使用的多尺度特征设置。
+    IN_FEATURES: ["p2", "p3", "p4", "p5"] # 动态检测头用于 RoI 池化的 FPN 层。
+  ROI_BOX_HEAD: # RoI 框特征池化设置。
+    POOLER_TYPE: "ROIAlignV2" # 使用带半像素对齐修正的 ROIAlignV2。
+    POOLER_RESOLUTION: 7 # 将每个候选框池化为 7×7 特征。
+    POOLER_SAMPLING_RATIO: 2 # ROIAlign 每个输出网格沿每个维度固定采样 2 个点。
 
-SOLVER:
-  IMS_PER_BATCH: 16
-  BASE_LR: 0.000025
-  STEPS: (210000, 250000)
-  MAX_ITER: 270000
-  WARMUP_FACTOR: 0.01
-  WARMUP_ITERS: 1000
-  OPTIMIZER: "ADAMW"
-  CLIP_GRADIENTS:
-    ENABLED: True
-    CLIP_TYPE: "full_model"
-    CLIP_VALUE: 1.0
+SOLVER: # 优化器、批量、学习率计划和梯度裁剪设置。
+  IMS_PER_BATCH: 16 # 所有 GPU 合计的每次迭代图像数；改变时通常需联动调整学习率和迭代数。
+  BASE_LR: 0.000025 # warmup 结束后的基础学习率。
+  STEPS: (210000, 250000) # MultiStep 学习率衰减的迭代里程碑。
+  MAX_ITER: 270000 # 训练的最大优化迭代次数。
+  WARMUP_FACTOR: 0.01 # warmup 起始学习率相对 BASE_LR 的倍率。
+  WARMUP_ITERS: 1000 # 学习率 warmup 持续的迭代次数。
+  OPTIMIZER: "ADAMW" # 使用解耦权重衰减的 AdamW 优化器。
+  CLIP_GRADIENTS: # 梯度裁剪设置，用于抑制过大的更新。
+    ENABLED: True # 启用梯度裁剪。
+    CLIP_TYPE: "full_model" # 按整个模型的全局梯度范数统一裁剪。
+    CLIP_VALUE: 1.0 # 全局梯度范数的最大允许值。
 
-INPUT:
-  MIN_SIZE_TRAIN: (256, 384, 512, 640, 768, 896, 1024)
-  MAX_SIZE_TRAIN: 1024
-  MIN_SIZE_TEST: 256
-  MAX_SIZE_TEST: 1024
-  CROP:
-    ENABLED: True
-  FORMAT: "RGB"
+INPUT: # 训练与评估阶段的图像缩放、裁剪和通道格式设置。
+  MIN_SIZE_TRAIN: (256, 384, 512, 640, 768, 896, 1024) # 训练时可选的目标短边尺寸；默认按 choice 随机选择一个。
+  MAX_SIZE_TRAIN: 1024 # 训练缩放后长边允许的最大像素数。
+  MIN_SIZE_TEST: 256 # 评估时将图像短边缩放到 256 像素。
+  MAX_SIZE_TEST: 1024 # 评估缩放后长边允许的最大像素数。
+  CROP: # 训练随机裁剪设置。
+    ENABLED: True # 启用训练阶段随机裁剪；类型和尺寸继承 Detectron2 默认值。
+  FORMAT: "RGB" # 按 RGB 通道顺序读取图像，必须与 PIXEL_MEAN/PIXEL_STD 顺序一致。
 
-VERSION: 2
+VERSION: 2 # Detectron2 配置格式版本，加载旧版配置时用于兼容转换。

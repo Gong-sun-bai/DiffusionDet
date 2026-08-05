@@ -25,12 +25,7 @@ def make_cfg(**overrides):
             "ID": "sar-005",
             "NAME": "r18-fpn128-seed40244023",
             "DATASET": "sar_ship",
-            "TRACK": "accuracy",
-            "KIND": "baseline",
-            "BASELINE": "",
-            "PURPOSE": "建立固定种子基线",
-            "HYPOTHESIS": "固定种子后结果可重复",
-            "CHANGES": [],
+            "DESCRIPTION": "固定种子 R18/FPN128 基线",
             "OUTPUT_ROOT": "./runs",
         },
         "SEED": 40244023,
@@ -121,11 +116,20 @@ class ValidationTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ExperimentError):
                 validate_slug(value)
 
-    def test_nonhistorical_requires_fixed_seed(self):
+    def test_training_requires_fixed_seed(self):
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaisesRegex(ExperimentError, "SEED"):
                 configure_experiment(
                     make_cfg(**{"SEED": -1}), make_args(), Path(temporary)
+                )
+
+    def test_resume_requires_fixed_seed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ExperimentError, "SEED"):
+                configure_experiment(
+                    make_cfg(**{"SEED": -1}),
+                    make_args(resume=True),
+                    Path(temporary),
                 )
 
     def test_experiment_id_prefix_matches_dataset(self):
@@ -146,61 +150,50 @@ class ValidationTests(unittest.TestCase):
                     Path(temporary),
                 )
 
-    def test_ablation_requires_baseline_and_structured_changes(self):
+    def test_description_is_optional(self):
         with tempfile.TemporaryDirectory() as temporary:
-            cfg = make_cfg(
-                **{
-                    "EXPERIMENT.KIND": "ablation",
-                    "EXPERIMENT.BASELINE": "sar-005",
-                    "EXPERIMENT.CHANGES": [
-                        "MODEL.DiffusionDet.NUM_PROPOSALS: 500 -> 300"
-                    ],
-                }
+            cfg = make_cfg()
+            del cfg["EXPERIMENT"]["DESCRIPTION"]
+            context = configure_experiment(
+                cfg,
+                make_args(),
+                Path(temporary),
             )
-            configure_experiment(cfg, make_args(), Path(temporary))
-            cfg["EXPERIMENT"]["CHANGES"] = ["proposals changed"]
-            with self.assertRaisesRegex(ExperimentError, "CHANGES"):
-                configure_experiment(cfg, make_args(), Path(temporary))
+            self.assertEqual(context.metadata.description, "")
 
-    def test_smoke_kind_is_valid_without_ablation_requirements(self):
+    def test_test_id_does_not_require_separate_kind(self):
         with tempfile.TemporaryDirectory() as temporary:
             cfg = make_cfg(
                 **{
                     "EXPERIMENT.ID": "sar-test-001",
-                    "EXPERIMENT.KIND": "smoke",
-                    "EXPERIMENT.BASELINE": "sar-005",
+                    "EXPERIMENT.DESCRIPTION": "20 iter 训练链路测试",
                     "SOLVER.MAX_ITER": 20,
                     "SOLVER.STEPS": (),
                 }
             )
             context = configure_experiment(cfg, make_args(), Path(temporary))
-            self.assertEqual(context.metadata.kind, "smoke")
-            self.assertEqual(context.metadata.baseline, "sar-005")
+            self.assertEqual(context.metadata.experiment_id, "sar-test-001")
+            self.assertEqual(context.metadata.description, "20 iter 训练链路测试")
 
-    def test_smoke_kind_requires_test_id(self):
+    def test_evaluation_allows_legacy_training_parameters(self):
         with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaisesRegex(ExperimentError, "KIND=smoke"):
-                configure_experiment(
-                    make_cfg(
-                        **{
-                            "EXPERIMENT.ID": "sar-007",
-                            "EXPERIMENT.KIND": "smoke",
-                            "SOLVER.MAX_ITER": 20,
-                            "SOLVER.STEPS": (),
-                        }
-                    ),
-                    make_args(),
-                    Path(temporary),
-                )
-
-    def test_test_id_is_reserved_for_smoke_kind(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaisesRegex(ExperimentError, "仅允许"):
-                configure_experiment(
-                    make_cfg(**{"EXPERIMENT.ID": "sar-test-001"}),
-                    make_args(),
-                    Path(temporary),
-                )
+            cfg = make_cfg(
+                **{
+                    "SEED": -1,
+                    "SOLVER.MAX_ITER": 99400,
+                    "SOLVER.STEPS": (278102, 357559),
+                    "MODEL.WEIGHTS": "weights/model_final.pth",
+                }
+            )
+            context = configure_experiment(
+                cfg,
+                make_args(
+                    eval_only=True,
+                    opts=["MODEL.WEIGHTS", "weights/model_final.pth"],
+                ),
+                Path(temporary),
+            )
+            self.assertEqual(context.mode, "evaluation")
 
     def test_checkpoint_policy_requires_supported_values(self):
         with self.assertRaisesRegex(ExperimentError, "RETENTION"):
@@ -282,16 +275,15 @@ class DirectorySafetyTests(unittest.TestCase):
             (context.run_dir / "model_final.pth").write_bytes(b"checkpoint")
             validate_output_state(context)
 
-    def test_historical_training_is_rejected(self):
+    def test_legacy_training_is_rejected_by_seed_policy(self):
         with tempfile.TemporaryDirectory() as temporary:
             cfg = make_cfg(
                 **{
                     "EXPERIMENT.ID": "sar-001",
-                    "EXPERIMENT.KIND": "historical",
                     "SEED": -1,
                 }
             )
-            with self.assertRaisesRegex(ExperimentError, "历史配置"):
+            with self.assertRaisesRegex(ExperimentError, "SEED"):
                 configure_experiment(cfg, make_args(), Path(temporary))
 
     def test_evaluation_gets_timestamped_directory(self):
@@ -386,7 +378,17 @@ class ManifestTests(unittest.TestCase):
             initialize_experiment(context, make_cfg())
             manifest_path = context.output_dir / "experiment_manifest.json"
             manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["schema_version"], 2)
             self.assertEqual(manifest["status"], "running")
+            self.assertEqual(
+                manifest["experiment"],
+                {
+                    "id": "sar-005",
+                    "name": "r18-fpn128-seed40244023",
+                    "dataset": "sar_ship",
+                    "description": "固定种子 R18/FPN128 基线",
+                },
+            )
             self.assertEqual(
                 manifest["parameters"]["DATALOADER.NUM_WORKERS"], 4
             )
@@ -400,7 +402,15 @@ class ManifestTests(unittest.TestCase):
             summary = json.loads(
                 (context.output_dir / "result_summary.json").read_text()
             )
+            self.assertEqual(summary["schema_version"], 1)
             self.assertEqual(summary["results"]["bbox"]["AP"], 66.9)
+
+    def test_blank_description_is_null_in_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cfg = make_cfg(**{"EXPERIMENT.DESCRIPTION": ""})
+            context = configure_experiment(cfg, make_args(), Path(temporary))
+            manifest = initialize_experiment(context, cfg)
+            self.assertIsNone(manifest["experiment"]["description"])
 
 
 if __name__ == "__main__":

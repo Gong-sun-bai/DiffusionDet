@@ -85,7 +85,7 @@ runs/<DATASET>/<ID>__<NAME>/
 - `sar-test-001`：已完成的 RTX 2080 Ti Batch 16 / 20 iter 冒烟，不含 AP；
 - `panda-000`：历史 PANDA 四类别基线。
 
-下一未占用正式 SAR 序号为 `sar-007`，下一测试序号为 `sar-test-002`。正式 ID 使用 `<dataset>-NNN`，测试 ID 使用 `<dataset>-test-NNN`；`KIND=smoke` 必须使用测试 ID，测试 ID 仅允许用于 smoke。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
+下一未占用正式 SAR 序号为 `sar-007`，下一测试序号为 `sar-test-002`。正式 ID 使用 `<dataset>-NNN`，测试实验直接使用 `<dataset>-test-NNN`；测试 ID 只用于 smoke，不进入正式实验排名。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
 
 历史迁移映射只在 `docs/实验日志.md` 和 `tools/migrate_historical_runs.py` 中维护；不要恢复旧 `output*` 目录或创建兼容软链接。
 
@@ -97,11 +97,10 @@ runs/<DATASET>/<ID>__<NAME>/
 - 评估必须通过命令行显式指定 `MODEL.WEIGHTS`，文件名只允许 `model_final.pth`、`model_latest.pth` 或 `model_best.pth`。
 - `inference/instances_predictions.pth` 是逐图预测列表，永远不是模型权重。
 - 评估输出自动进入 `<run>/evaluations/<UTC时间戳>/`。
-- 历史配置 `KIND=historical`，训练入口会拒绝重新训练。
-- 非历史实验必须固定非负 `SEED`，默认 `40244023`。
-- 非历史实验的每个 `SOLVER.STEPS` 必须小于 `SOLVER.MAX_ITER`。
+- 所有训练和 `--resume` 都必须固定非负 `SEED`，默认 `40244023`；评估旧配置时不检查训练种子。
+- 所有训练和 `--resume` 的每个 `SOLVER.STEPS` 必须小于 `SOLVER.MAX_ITER`；评估旧配置时允许保留历史调度错误。
 - `SOLVER.CHECKPOINT_RETENTION=latest` 会周期性覆盖 `model_latest.pth`；启用 `TEST.BEST_CHECKPOINT` 时按验证指标覆盖 `model_best.pth`，`last_checkpoint` 仍必须指向 latest 以用于续训。
-- 不修改历史 `config.yaml`、`log.txt`、`metrics.json` 和权重；新结论写入实验日志。
+- 不修改历史 `config.yaml`、`log.txt`、`metrics.json` 和权重；运行清单使用 schema v2 的 `description` 汇总说明，新结论写入实验日志。
 
 新实验训练（先创建并校验新的 `sar-007` 配置）：
 
@@ -121,24 +120,18 @@ python train_net.py --num-gpus 1 \
 
 ## 消融规范
 
-`ablation` 必须填写：
+新消融配置使用可选的统一说明字段：
 
 ```yaml
 EXPERIMENT:
   ID: "sar-XYZ"
   NAME: "..."
   DATASET: "sar_ship"
-  TRACK: "accuracy"
-  KIND: "ablation"
-  BASELINE: "sar-005"
-  PURPOSE: "为什么做"
-  HYPOTHESIS: "预期改变什么"
-  CHANGES:
-    - "MODEL.DiffusionDet.NUM_PROPOSALS: 500 -> 300"
+  DESCRIPTION: "以 sar-006 为对照，将 NUM_PROPOSALS 从 500 改为 300，用于检验减少 proposal 对精度和开销的影响。"
   OUTPUT_ROOT: "./runs"
 ```
 
-一次实验只验证一个假设。FPN/HIDDEN 等因结构兼容必须一起变化时，可作为一个“检测头宽度”概念因素，但必须在 `PURPOSE` 和日志中说明。不要在模型源码中按实验 ID 写条件分支；应新增语义清晰的配置开关并保持默认行为不变。
+`DESCRIPTION` 是不参与运行逻辑的可选自由文本，建议简要写明对照实验、主要改动、目的和重要限制。一次实验只验证一个假设；FPN/HIDDEN 等因结构兼容必须一起变化时，可作为一个“检测头宽度”概念因素，并在 `DESCRIPTION` 和日志中说明。不要在模型源码中按实验 ID 写条件分支；应新增语义清晰的配置开关并保持默认行为不变。
 
 推荐顺序：以 `sar-006` 为可信固定 256 基线 → 通道宽度 → backbone → proposal 数 → sample step → 输入尺度/裁剪 → 损失权重。
 

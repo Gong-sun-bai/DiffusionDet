@@ -1,39 +1,15 @@
-_BASE_: "../../machine/rtx2080ti-sar-r18.yaml"
+_BASE_: "../../machine/Rtx2080ti-Base-DiffusionDet.yaml" # 直接继承 RTX 2080 Ti 的 R18/FPN128 SAR 公共父配置。
 
-EXPERIMENT:
-  ID: "sar-005"
-  NAME: "r18-fpn128-h128-bs16-it397288-scratch-seed40244023"
-  DATASET: "sar_ship"
-  TRACK: "accuracy"
-  KIND: "baseline"
-  BASELINE: ""
-  PURPOSE: "建立固定随机种子的可重复 SAR 精度基线"
-  HYPOTHESIS: "固定种子后应复现历史 R18-128 的方向性优势"
-  CHANGES: []
-  OUTPUT_ROOT: "./runs"
+EXPERIMENT: # 实验身份、研究意图和输出目录元数据。
+  ID: "sar-005" # 仓库内唯一的正式 SAR 实验编号，用于目录保护和清单记录。
+  NAME: "r18-fpn128-h128-bs16-it397288-scratch-seed40244023" # 人类可读的目录名后缀；这是历史命名，实际 Batch/Iter 以 SOLVER 为准。
+  DATASET: "sar_ship" # 实验数据集标识，并决定 runs 下的数据集子目录。
+  DESCRIPTION: "固定 SEED=40244023 的 ResNet-18/FPN128 多尺度 SAR 基线；实际为 Batch 25、254264 iter，NAME 中 Batch/Iter 已过时，以 SOLVER 和冻结配置为准。" # 可选说明，仅记录实验目的、主要设置和重要限制，不参与运行逻辑。
+  OUTPUT_ROOT: "./runs" # 运行产物根目录，相对路径按仓库根目录解析。
 
-MODEL:
-  WEIGHTS: ""
-  RESNETS:
-    DEPTH: 18
-    STRIDE_IN_1X1: False
-    RES2_OUT_CHANNELS: 64
-  FPN:
-    OUT_CHANNELS: 128
-  DiffusionDet:
-    NUM_PROPOSALS: 500
-    NUM_CLASSES: 1
-    HIDDEN_DIM: 128
-
-DATASETS:
-  TRAIN: ("sar_ship_train",)
-  TEST: ("sar_ship_val",)
-
-SEED: 40244023
-
-SOLVER:
-  IMS_PER_BATCH: 25
-  BASE_LR: 0.000035
-  MAX_ITER: 254264
-  CHECKPOINT_PERIOD: 5000
-  STEPS: (177985, 228838)
+SOLVER: # 仅保留相对 2080 Ti 公共父配置不同的正式训练计划。
+  IMS_PER_BATCH: 25 # 单 GPU 上每次迭代使用 25 张图像。
+  BASE_LR: 0.000035 # Batch 25 对应的基础学习率。
+  MAX_ITER: 254264 # 最大训练迭代数，约保持既定总样本处理量。
+  CHECKPOINT_PERIOD: 2000 # 冻结 config.yaml 记录的实际周期检查点间隔为 2000 iter。
+  STEPS: (177985, 228838) # 分别约在总迭代的 70% 和 90% 处衰减学习率。
