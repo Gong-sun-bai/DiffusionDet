@@ -27,7 +27,7 @@ python -c "import torch, torchvision, fvcore, pycocotools, timm; print(torch.__v
 python -c "import detectron2; from detectron2 import _C; print(detectron2.__file__, _C.__file__)"
 ```
 
-`Difdet` 已于 2026-07-23 完成 Batch 16、20 iter 的 `sar-007` 冒烟训练；当前 `_C` 为 CPU-only，普通 ROIAlign/NMS 由 TorchVision CUDA 实现。环境重建与限制见 `docs/RTX2080Ti基线复现记录.md`。
+`Difdet` 已于 2026-07-23 完成 Batch 16、20 iter 的 `sar-test-001` 冒烟训练；当前 `_C` 为 CPU-only，普通 ROIAlign/NMS 由 TorchVision CUDA 实现。环境重建与限制见 `docs/RTX2080Ti基线复现记录.md`。
 
 ## 项目定位
 
@@ -76,17 +76,16 @@ runs/<DATASET>/<ID>__<NAME>/
 当前 ID：
 
 - `sar-000`：历史 R50/256；
-- `sar-001`：历史 R18/128，SAR 当前最高 AP；
+- `sar-001`：历史 R18/128，AP 66.94，`SEED=-1`；
 - `sar-002`：历史 R18/64，调度无效；
 - `sar-003`：历史 MobileNetV4-Small；
 - `sar-004`：历史 MobileNetV4-Medium；
 - `sar-005`：已完成的固定种子、多尺度 Batch 25 基线，AP 58.84；目录名与实际 Batch/Iter 不一致，以冻结配置为准；
-- `sar-006`：待运行的 proposals=300 单因素示例，暂缓；
-- `sar-007`：已完成的 RTX 2080 Ti Batch 16 / 20 iter 冒烟，不含 AP；
-- `sar-008`：待运行的固定 256 输入复现实验，沿用 `sar-005` 的 Batch 25 和 254264 iter；
+- `sar-006`：已完成的固定 256 可重复基线，最佳 AP 67.77，沿用 `sar-005` 的 Batch 25 和 254264 iter；
+- `sar-test-001`：已完成的 RTX 2080 Ti Batch 16 / 20 iter 冒烟，不含 AP；
 - `panda-000`：历史 PANDA 四类别基线。
 
-下一未占用 SAR 序号为 `sar-009`。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
+下一未占用正式 SAR 序号为 `sar-007`，下一测试序号为 `sar-test-002`。正式 ID 使用 `<dataset>-NNN`，测试 ID 使用 `<dataset>-test-NNN`；`KIND=smoke` 必须使用测试 ID，测试 ID 仅允许用于 smoke。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
 
 历史迁移映射只在 `docs/实验日志.md` 和 `tools/migrate_historical_runs.py` 中维护；不要恢复旧 `output*` 目录或创建兼容软链接。
 
@@ -104,11 +103,11 @@ runs/<DATASET>/<ID>__<NAME>/
 - `SOLVER.CHECKPOINT_RETENTION=latest` 会周期性覆盖 `model_latest.pth`；启用 `TEST.BEST_CHECKPOINT` 时按验证指标覆盖 `model_best.pth`，`last_checkpoint` 仍必须指向 latest 以用于续训。
 - 不修改历史 `config.yaml`、`log.txt`、`metrics.json` 和权重；新结论写入实验日志。
 
-标准训练：
+新实验训练（先创建并校验新的 `sar-007` 配置）：
 
 ```bash
 python train_net.py --num-gpus 1 \
-  --config-file configs/experiments/sar_ship/sar-008-fixed256.yaml
+  --config-file configs/experiments/sar_ship/<sar-007-new-experiment>.yaml
 ```
 
 标准复评：
@@ -141,7 +140,7 @@ EXPERIMENT:
 
 一次实验只验证一个假设。FPN/HIDDEN 等因结构兼容必须一起变化时，可作为一个“检测头宽度”概念因素，但必须在 `PURPOSE` 和日志中说明。不要在模型源码中按实验 ID 写条件分支；应新增语义清晰的配置开关并保持默认行为不变。
 
-推荐顺序：`sar-008` 固定 256 复现 → 确定可信基线 → 通道宽度 → backbone → proposal 数 → sample step → 输入尺度/裁剪 → 损失权重。
+推荐顺序：以 `sar-006` 为可信固定 256 基线 → 通道宽度 → backbone → proposal 数 → sample step → 输入尺度/裁剪 → 损失权重。
 
 ## 历史结果速查
 
@@ -153,6 +152,7 @@ EXPERIMENT:
 | `sar-003` | SAR | 7.70M | 54.96 | 无端侧速度证据 |
 | `sar-004` | SAR | 20.58M | 57.61 | 延长训练后 milestones 未重算 |
 | `sar-005` | SAR | 34.46M | 58.84 | 固定种子但为 Batch 25、多尺度，不是 `sar-001` 严格复现 |
+| `sar-006` | SAR | 34.46M | 67.77 | 固定种子、Batch 25、固定 256；当前可重复基线 |
 | `panda-000` | PANDA | 110.67M | 13.24 | 四类别，不可与 SAR 横比 |
 
 最终指标优先读取 `metrics.json` 最后一条含 `bbox/AP` 的记录，并与 `log.txt` 复核。参数量来自实际评估权重的 `model` 状态字典。
@@ -185,7 +185,7 @@ git diff --check
 
 1. 导入配置、注册数据集并查询 Catalog；
 2. 构建模型，检查特征名/shape 和 checkpoint 加载；
-3. 用全新实验 ID 做短迭代 smoke test；`sar-007` 已完成，不得覆盖；
+3. 用全新测试 ID 做短迭代 smoke test；`sar-test-001` 已完成，不得覆盖；
 4. 正式训练或时间戳目录复评。
 
-`sar-007` 的 R18/FPN128 Batch 16 实测峰值显存为 12,626 MB；历史其他结构曾达 24–27 GB。正式训练前仍需检查显存；调整 Batch 时按复现记录同步缩放学习率、MAX_ITER、WARMUP_ITERS 和 STEPS，并使用新实验 ID。
+`sar-test-001` 的 R18/FPN128 Batch 16 实测峰值显存为 12,626 MB；`sar-006` 固定 256 Batch 25 的完整训练峰值为 15,620 MB。历史其他结构曾达 24–27 GB。正式训练前仍需检查显存；调整 Batch 时按复现记录同步缩放学习率、MAX_ITER、WARMUP_ITERS 和 STEPS，并使用新实验 ID。

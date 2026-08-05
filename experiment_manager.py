@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 
-EXPERIMENT_ID_RE = re.compile(r"^[a-z][a-z0-9]*-\d{3}$")
+EXPERIMENT_ID_RE = re.compile(
+    r"^(?P<prefix>[a-z][a-z0-9]*)(?P<test>-test)?-\d{3}$"
+)
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DATASET_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 CHANGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.]*:\s*.+\s+->\s+.+$")
@@ -115,7 +117,10 @@ def validate_slug(name: str) -> None:
 
 def validate_experiment_id(experiment_id: str) -> None:
     if not EXPERIMENT_ID_RE.fullmatch(experiment_id):
-        raise ExperimentError("EXPERIMENT.ID 必须符合 <数据集短名>-<三位序号>。")
+        raise ExperimentError(
+            "EXPERIMENT.ID 必须符合正式实验 <数据集短名>-<三位序号>，"
+            "或测试实验 <数据集短名>-test-<三位序号>。"
+        )
 
 
 def validate_metadata(
@@ -129,8 +134,9 @@ def validate_metadata(
     validate_slug(metadata.name)
     if not DATASET_RE.fullmatch(metadata.dataset):
         raise ExperimentError("EXPERIMENT.DATASET 必须是小写 snake_case 名称。")
+    id_match = EXPERIMENT_ID_RE.fullmatch(metadata.experiment_id)
     expected_prefix = metadata.dataset.split("_", 1)[0]
-    if metadata.experiment_id.split("-", 1)[0] != expected_prefix:
+    if id_match is None or id_match.group("prefix") != expected_prefix:
         raise ExperimentError(
             "EXPERIMENT.ID 前缀必须与 EXPERIMENT.DATASET 的短名一致。"
         )
@@ -139,6 +145,15 @@ def validate_metadata(
     if metadata.kind not in ALLOWED_KINDS:
         raise ExperimentError(
             "EXPERIMENT.KIND 只能为 historical、baseline、ablation 或 smoke。"
+        )
+    is_test_id = id_match is not None and id_match.group("test") is not None
+    if metadata.kind == "smoke" and not is_test_id:
+        raise ExperimentError(
+            "KIND=smoke 必须使用 <数据集短名>-test-<三位序号> 测试实验 ID。"
+        )
+    if metadata.kind != "smoke" and is_test_id:
+        raise ExperimentError(
+            "测试实验 ID 仅允许用于 KIND=smoke，不能用于正式实验或历史实验。"
         )
     if not metadata.purpose:
         raise ExperimentError("EXPERIMENT.PURPOSE 不能为空。")

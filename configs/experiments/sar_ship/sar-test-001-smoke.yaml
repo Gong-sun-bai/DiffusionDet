@@ -2,7 +2,7 @@ _BASE_: "sar-005.yaml"
 
 # 仅验证当前工作站上的完整训练链路，不用于精度比较。
 EXPERIMENT:
-  ID: "sar-007"
+  ID: "sar-test-001"
   NAME: "r18-fpn128-h128-bs16-it20-smoke-seed40244023"
   DATASET: "sar_ship"
   TRACK: "reproducibility"

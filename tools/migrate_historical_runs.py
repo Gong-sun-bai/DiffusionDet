@@ -19,6 +19,8 @@ from typing import Any
 
 MANIFEST = "experiment_manifest.json"
 REQUIRED_FILES = ("config.yaml", "log.txt", "metrics.json", "last_checkpoint")
+# 训练可视化是迁移后由日志派生的便捷产物，不属于最初迁移的原始证据快照。
+DERIVED_FILES = {"results.png"}
 
 RUNS = (
     {
@@ -221,7 +223,9 @@ def raw_snapshot(directory: Path) -> dict[str, Any]:
     files = sorted(
         path
         for path in directory.rglob("*")
-        if path.is_file() and path.name != MANIFEST
+        if path.is_file()
+        and path.name != MANIFEST
+        and path.relative_to(directory).as_posix() not in DERIVED_FILES
     )
     return {
         "file_count": len(files),

@@ -36,8 +36,8 @@ The installation instruction and usage are in [Getting Started with DiffusionDet
 - [实验日志](docs/实验日志.md)
 - [Codex 项目上下文](AGENTS.md)
 
-当前工作站已创建 `Difdet` 环境，完成 Batch 16、20 iter 的 `sar-007`
-冒烟训练，并完成 `sar-005` 固定种子多尺度训练。首次恢复环境时执行：
+当前工作站已创建 `Difdet` 环境，完成 Batch 16、20 iter 的 `sar-test-001`
+冒烟训练、`sar-005` 多尺度训练和 `sar-006` 固定 256 训练。首次恢复环境时执行：
 
 ```bash
 PYTHONNOUSERSITE=1 conda env create -f environment.yml
@@ -52,22 +52,23 @@ python tools/build_detectron2_extension.py build_ext --inplace
 configs/experiments/
 ├── panda/panda-000.yaml
 └── sar_ship/
-    ├── sar-000.yaml ... sar-004.yaml  # 历史只读配置
-    ├── sar-005.yaml                   # 固定种子正式基线
-    ├── sar-006-proposals300.yaml      # 单因素消融示例
-    ├── sar-007-smoke.yaml             # 已完成的本机训练冒烟
-    └── sar-008-fixed256.yaml          # 待运行的固定 256 复现实验
+    ├── sar-000.yaml ... sar-004.yaml  # 独立、历史只读配置
+    ├── sar-005.yaml                   # 固定种子多尺度实验
+    ├── sar-006-fixed256.yaml          # 已完成的固定 256 可重复基线
+    └── sar-test-001-smoke.yaml        # 已完成的本机训练冒烟
 ```
 
 RTX 2080 Ti 的 Batch、学习率、训练长度、milestones、worker 和 AMP
 默认值集中在 `configs/machine/rtx2080ti-sar-r18.yaml`。正式实验应继承机器
 配置并分配新 ID；Batch 改变时的联动缩放规范见复现记录。
 
-启动固定 256 复现实验：
+复评固定 256 基线的最佳权重：
 
 ```bash
 python train_net.py --num-gpus 1 \
-  --config-file configs/experiments/sar_ship/sar-008-fixed256.yaml
+  --config-file configs/experiments/sar_ship/sar-006-fixed256.yaml \
+  --eval-only \
+  MODEL.WEIGHTS runs/sar_ship/sar-006__r18-fpn128-h128-bs25-it254264-fixed256-seed40244023/model_best.pth
 ```
 
 入口会根据 `EXPERIMENT.*` 自动写入
@@ -101,11 +102,11 @@ python train_net.py --num-gpus 1 \
 
 `inference/instances_predictions.pth` 是预测缓存，不是模型权重。
 
-当前历史 SAR 最高结果为 `sar-001` 的 AP 66.94，但它使用 `SEED=-1`。
-`sar-005` 已完成并得到 AP 58.84；它实际采用 Batch 25 和多尺度输入，
-不是严格复现。下一步先运行 `sar-008`，在保持 005 的 Batch 和步数时恢复
-固定 256 输入。该实验只保留可续训的 `model_latest.pth` 和验证 AP 最优的
-`model_best.pth`。历史结果只保存在本地 `runs/`，该目录被 Git 忽略。
+`sar-006` 在保持 `sar-005` 的种子、Batch、学习率和步数时恢复固定 256
+输入，最佳 `AP=67.7707`，相对多尺度 `sar-005` 提高 8.93 AP，现为可重复
+SAR 基线。最佳精度使用 `model_best.pth`，可靠续训使用 `model_latest.pth`。
+正式实验下一编号为 `sar-007`，测试实验下一编号为 `sar-test-002`。历史结果
+只保存在本地 `runs/`，该目录被 Git 忽略。
 
 
 ## License

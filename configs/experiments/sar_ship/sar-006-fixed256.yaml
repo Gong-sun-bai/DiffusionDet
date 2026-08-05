@@ -1,7 +1,7 @@
 _BASE_: "sar-005.yaml"
 
 EXPERIMENT:
-  ID: "sar-008"
+  ID: "sar-006"
   NAME: "r18-fpn128-h128-bs25-it254264-fixed256-seed40244023"
   DATASET: "sar_ship"
   TRACK: "reproducibility"
@@ -26,11 +26,7 @@ INPUT:
 
 SOLVER:
   CHECKPOINT_RETENTION: "latest"
-  IMS_PER_BATCH: 32
-  BASE_LR: 0.000045
-  MAX_ITER: 198644
   CHECKPOINT_PERIOD: 5000
-  STEPS: (139051, 178780)
 
 TEST:
   EVAL_PERIOD: 5000

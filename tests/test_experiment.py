@@ -102,8 +102,16 @@ def make_args(**overrides):
 class ValidationTests(unittest.TestCase):
     def test_valid_and_invalid_experiment_ids(self):
         validate_experiment_id("sar-005")
+        validate_experiment_id("sar-test-001")
         validate_experiment_id("panda-000")
-        for value in ("SAR-005", "sar-5", "sar_005", "sar-0005"):
+        for value in (
+            "SAR-005",
+            "sar-5",
+            "sar_005",
+            "sar-0005",
+            "sar-smoke-001",
+            "sar-test-01",
+        ):
             with self.subTest(value=value), self.assertRaises(ExperimentError):
                 validate_experiment_id(value)
 
@@ -158,7 +166,7 @@ class ValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             cfg = make_cfg(
                 **{
-                    "EXPERIMENT.ID": "sar-007",
+                    "EXPERIMENT.ID": "sar-test-001",
                     "EXPERIMENT.KIND": "smoke",
                     "EXPERIMENT.BASELINE": "sar-005",
                     "SOLVER.MAX_ITER": 20,
@@ -168,6 +176,31 @@ class ValidationTests(unittest.TestCase):
             context = configure_experiment(cfg, make_args(), Path(temporary))
             self.assertEqual(context.metadata.kind, "smoke")
             self.assertEqual(context.metadata.baseline, "sar-005")
+
+    def test_smoke_kind_requires_test_id(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ExperimentError, "KIND=smoke"):
+                configure_experiment(
+                    make_cfg(
+                        **{
+                            "EXPERIMENT.ID": "sar-007",
+                            "EXPERIMENT.KIND": "smoke",
+                            "SOLVER.MAX_ITER": 20,
+                            "SOLVER.STEPS": (),
+                        }
+                    ),
+                    make_args(),
+                    Path(temporary),
+                )
+
+    def test_test_id_is_reserved_for_smoke_kind(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ExperimentError, "仅允许"):
+                configure_experiment(
+                    make_cfg(**{"EXPERIMENT.ID": "sar-test-001"}),
+                    make_args(),
+                    Path(temporary),
+                )
 
     def test_checkpoint_policy_requires_supported_values(self):
         with self.assertRaisesRegex(ExperimentError, "RETENTION"):

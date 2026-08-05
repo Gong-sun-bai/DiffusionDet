@@ -1,6 +1,4 @@
-_BASE_: "../../Base-DiffusionDet.yaml"
-
-# 历史只读配置：原 output_3。STEPS 超过 MAX_ITER，标记为 invalid。
+# 历史只读配置：原 output_3。完全自包含；STEPS 超过 MAX_ITER，忠实保留。
 EXPERIMENT:
   ID: "sar-002"
   NAME: "r18-fpn64-h64-bs64-it99400-scratch"
@@ -20,29 +18,99 @@ EXPERIMENT:
   OUTPUT_ROOT: "./runs"
 
 MODEL:
+  META_ARCHITECTURE: "DiffusionDet"
   WEIGHTS: ""
+  PIXEL_MEAN: [123.675, 116.280, 103.530]
+  PIXEL_STD: [58.395, 57.120, 57.375]
+  BACKBONE:
+    NAME: "build_resnet_fpn_backbone"
   RESNETS:
     DEPTH: 18
     STRIDE_IN_1X1: False
     RES2_OUT_CHANNELS: 64
+    OUT_FEATURES: ["res2", "res3", "res4", "res5"]
   FPN:
+    IN_FEATURES: ["res2", "res3", "res4", "res5"]
     OUT_CHANNELS: 64
+  ROI_HEADS:
+    IN_FEATURES: ["p2", "p3", "p4", "p5"]
   ROI_BOX_HEAD:
     NUM_FC: 2
     FC_DIM: 256
+    POOLER_TYPE: "ROIAlignV2"
+    POOLER_RESOLUTION: 7
+    POOLER_SAMPLING_RATIO: 2
   DiffusionDet:
     NUM_PROPOSALS: 500
     NUM_CLASSES: 1
     HIDDEN_DIM: 64
+    NUM_HEADS: 6
+    NUM_CLS: 1
+    NUM_REG: 3
+    NHEADS: 8
+    DIM_FEEDFORWARD: 2048
+    DROPOUT: 0.0
+    ACTIVATION: "relu"
+    NUM_DYNAMIC: 2
+    DIM_DYNAMIC: 64
+    CLASS_WEIGHT: 2.0
+    GIOU_WEIGHT: 2.0
+    L1_WEIGHT: 5.0
+    NO_OBJECT_WEIGHT: 0.1
+    DEEP_SUPERVISION: True
+    USE_FOCAL: True
+    USE_FED_LOSS: False
+    ALPHA: 0.25
+    GAMMA: 2.0
+    PRIOR_PROB: 0.01
+    OTA_K: 5
+    SNR_SCALE: 2.0
+    SAMPLE_STEP: 1
+    USE_NMS: True
 
 DATASETS:
   TRAIN: ("sar_ship_train",)
   TEST: ("sar_ship_val",)
 
+DATALOADER:
+  NUM_WORKERS: 4
+
+INPUT:
+  MIN_SIZE_TRAIN: (256,)
+  MAX_SIZE_TRAIN: 256
+  MIN_SIZE_TRAIN_SAMPLING: "choice"
+  MIN_SIZE_TEST: 256
+  MAX_SIZE_TEST: 256
+  RANDOM_FLIP: "horizontal"
+  FORMAT: "RGB"
+  CROP:
+    ENABLED: True
+    TYPE: "relative_range"
+    SIZE: [0.9, 0.9]
+
 SEED: -1
 SOLVER:
   IMS_PER_BATCH: 64
+  BASE_LR: 0.000025
   MAX_ITER: 99400
   CHECKPOINT_PERIOD: 5000
   STEPS: (278102, 357559)
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 1000
+  WARMUP_METHOD: "linear"
+  OPTIMIZER: "ADAMW"
+  WEIGHT_DECAY: 0.0001
+  AMP:
+    ENABLED: False
+  CLIP_GRADIENTS:
+    ENABLED: True
+    CLIP_TYPE: "full_model"
+    CLIP_VALUE: 1.0
 
+TEST:
+  EVAL_PERIOD: 0
+  DETECTIONS_PER_IMAGE: 100
+  AUG:
+    ENABLED: False
+
+VERSION: 2
