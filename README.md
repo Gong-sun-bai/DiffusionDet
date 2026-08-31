@@ -37,7 +37,8 @@ The installation instruction and usage are in [Getting Started with DiffusionDet
 - [Codex 项目上下文](AGENTS.md)
 
 当前工作站已创建 `Difdet` 环境，完成 Batch 16、20 iter 的 `sar-test-001`
-冒烟训练、`sar-005` 多尺度训练和 `sar-006` 固定 256 训练。首次恢复环境时执行：
+冒烟训练、`sar-005` 多尺度训练、`sar-006` 固定 256 训练，以及
+`sar-007`～`sar-014` 的 10M 以下分层筛选。首次恢复环境时执行：
 
 ```bash
 PYTHONNOUSERSITE=1 conda env create -f environment.yml
@@ -51,13 +52,17 @@ python tools/build_detectron2_extension.py build_ext --inplace
 ```text
 configs/
 ├── Base-DiffusionDet.yaml                         # DiffusionDet 公共默认值
-├── machine/Rtx2080ti-Base-DiffusionDet.yaml       # 本机三个 SAR 实验的公共父配置
+├── machine/
+│   ├── Rtx2080ti-Base-DiffusionDet.yaml           # R18 基线公共父配置
+│   └── Rtx2080ti-SAR-Under10M.yaml                # 10M 以下筛选/全量公共协议
 └── experiments/
     ├── panda/panda-000.yaml
     └── sar_ship/
         ├── sar-000.yaml ... sar-004.yaml          # 独立、历史只读配置
         ├── sar-005.yaml                           # 固定种子多尺度实验
         ├── sar-006-fixed256.yaml                  # 已完成的固定 256 可重复基线
+        ├── sar-007-*.yaml ... sar-014-*.yaml      # 已完成的 20k/50k screening
+        ├── sar-015-*.yaml、sar-016-*.yaml         # 两名待运行正式全量配置
         └── sar-test-001-smoke.yaml                # 已完成的本机训练冒烟
 ```
 
@@ -108,9 +113,25 @@ python train_net.py --num-gpus 1 \
 
 `sar-006` 在保持 `sar-005` 的种子、Batch、学习率和步数时恢复固定 256
 输入，最佳 `AP=67.7707`，相对多尺度 `sar-005` 提高 8.93 AP，现为可重复
-SAR 基线。最佳精度使用 `model_best.pth`，可靠续训使用 `model_latest.pth`。
-正式实验下一编号为 `sar-007`，测试实验下一编号为 `sar-test-002`。历史结果
-只保存在本地 `runs/`，该目录被 Git 忽略。
+SAR 基线。10M 以下 screening 中，`sar-013`（RepViT-M0.9，9.44M）50k
+达到 `AP=61.9773`，`sar-012`（MobileNetV4-Conv-Small，6.04M）50k 达到
+`AP=57.3590`；两者仍需完整训练和新种子复核。
+
+提交当前筛选代码与文档后，使用普通训练入口逐个运行正式实验。先运行精度优先的 `sar-015`：
+
+```bash
+python train_net.py --num-gpus 1 \
+  --config-file configs/experiments/sar_ship/sar-015-under10m-repvit-full-seed40244023.yaml
+```
+
+待其完成并人工分析后，再决定是否单独运行 `sar-016`：
+
+```bash
+python train_net.py --num-gpus 1 \
+  --config-file configs/experiments/sar_ship/sar-016-under10m-timm-mnv4-full-seed40244023.yaml
+```
+
+下一未占用正式编号为 `sar-017`，下一测试编号为 `sar-test-002`。所有结果只保存在被 Git 忽略的 `runs/`。
 
 
 ## License

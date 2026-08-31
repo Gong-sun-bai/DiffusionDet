@@ -1,0 +1,74 @@
+_BASE_: "../Base-DiffusionDet.yaml"
+
+# 10M 以下 SAR 候选的统一筛选/全量协议。各实验只覆盖结构或种子差异。
+MODEL:
+  WEIGHTS: ""
+  BACKBONE:
+    NAME: "build_mobilenetv4_fpn_backbone"
+  MOBILENETV4:
+    SIZE: "small"
+    OUT_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    NORM: "BN"
+    WIDTH_MULTIPLIER: 1.0
+  FPN:
+    IN_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    OUT_CHANNELS: 64
+  ROI_HEADS:
+    IN_FEATURES: ["p2", "p3", "p4", "p5"]
+  ROI_BOX_HEAD:
+    POOLER_TYPE: "ROIAlignV2"
+    POOLER_RESOLUTION: 7
+    POOLER_SAMPLING_RATIO: 2
+  DiffusionDet:
+    NUM_PROPOSALS: 500
+    NUM_CLASSES: 1
+    HIDDEN_DIM: 64
+    NUM_HEADS: 6
+    HEAD_SHARING: "none"
+    INFERENCE_HEAD_STAGE: -1
+    SAMPLE_STEP: 1
+    DDIM_ETA: 1.0
+    BOX_RENEWAL: True
+    RENEWAL_THRESHOLD: 0.5
+    ENSEMBLE_MODE: "legacy_nonfinal"
+
+DATASETS:
+  TRAIN: ("sar_ship_train",)
+  TEST: ("sar_ship_val",)
+
+DATALOADER:
+  NUM_WORKERS: 4
+
+INPUT:
+  MIN_SIZE_TRAIN: (256,)
+  MAX_SIZE_TRAIN: 256
+  MIN_SIZE_TEST: 256
+  MAX_SIZE_TEST: 256
+  MIN_SIZE_TRAIN_SAMPLING: "choice"
+  RANDOM_FLIP: "horizontal"
+  FORMAT: "RGB"
+  CROP:
+    ENABLED: True
+    TYPE: "relative_range"
+    SIZE: [0.9, 0.9]
+
+SEED: 40244023
+
+SOLVER:
+  IMS_PER_BATCH: 25
+  BASE_LR: 0.000035
+  MAX_ITER: 254264
+  STEPS: (177985, 228838)
+  WARMUP_ITERS: 1000
+  CHECKPOINT_PERIOD: 5000
+  CHECKPOINT_RETENTION: "latest"
+  AMP:
+    ENABLED: False
+
+TEST:
+  EVAL_PERIOD: 5000
+  BEST_CHECKPOINT:
+    ENABLED: True
+    METRIC: "bbox/AP"
+    MODE: "max"
+

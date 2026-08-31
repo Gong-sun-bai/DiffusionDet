@@ -16,3 +16,4 @@ from .mobilenetv4 import (
     build_mobilenetv4_fpn_backbone,
     add_mobilenetv4_config,
 )
+from .timm_backbone import TimmBackbone, build_timm_fpn_backbone

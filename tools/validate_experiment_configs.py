@@ -32,7 +32,6 @@ EXPECTED_HISTORICAL_IDS = {
     "sar-004",
     "panda-000",
 }
-EXPECTED_SAR_FORMAL_IDS = {f"sar-{index:03d}" for index in range(7)}
 EXPECTED_SAR_TEST_IDS = {"sar-test-001"}
 STANDALONE_HISTORICAL_IDS = {f"sar-{index:03d}" for index in range(5)}
 
@@ -375,10 +374,16 @@ def main() -> int:
             "历史配置集合不完整："
             f"missing={sorted(missing_historical_ids)}"
         )
-    if sar_formal_ids != EXPECTED_SAR_FORMAL_IDS:
+    formal_numbers = sorted(int(value.rsplit("-", 1)[1]) for value in sar_formal_ids)
+    expected_formal_ids = (
+        {f"sar-{index:03d}" for index in range(formal_numbers[-1] + 1)}
+        if formal_numbers
+        else set()
+    )
+    if sar_formal_ids != expected_formal_ids:
         errors.append(
             "SAR 正式实验编号不连续："
-            f"expected={sorted(EXPECTED_SAR_FORMAL_IDS)}, "
+            f"expected={sorted(expected_formal_ids)}, "
             f"actual={sorted(sar_formal_ids)}"
         )
     if sar_test_ids != EXPECTED_SAR_TEST_IDS:

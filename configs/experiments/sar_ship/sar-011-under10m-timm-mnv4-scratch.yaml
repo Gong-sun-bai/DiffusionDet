@@ -1,0 +1,24 @@
+_BASE_: "../../machine/Rtx2080ti-SAR-Under10M.yaml"
+
+EXPERIMENT:
+  ID: "sar-011"
+  NAME: "timm-mnv4-conv-small-h128-shared-scratch-screen"
+  DATASET: "sar_ship"
+  DESCRIPTION: "以 sar-009 为头部对照，将本地自定义 backbone 换为 timm 标准 MobileNetV4-Conv-Small，并保持 scratch 初始化。"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  BACKBONE:
+    NAME: "build_timm_fpn_backbone"
+  FPN:
+    IN_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+    OUT_CHANNELS: 128
+  TIMM:
+    NAME: "mobilenetv4_conv_small.e3600_r256_in1k"
+    PRETRAINED: False
+    OUT_INDICES: [1, 2, 3, 4]
+    OUT_FEATURES: ["stage1", "stage2", "stage3", "stage4"]
+  DiffusionDet:
+    HIDDEN_DIM: 128
+    HEAD_SHARING: "full"
+

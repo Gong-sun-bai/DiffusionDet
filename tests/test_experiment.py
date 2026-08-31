@@ -89,12 +89,37 @@ def make_args(**overrides):
         "eval_only": False,
         "resume": False,
         "opts": [],
+        "run_until_iter": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
 
 
 class ValidationTests(unittest.TestCase):
+    def test_run_until_iter_is_bounded_by_full_schedule(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = configure_experiment(
+                make_cfg(),
+                make_args(run_until_iter=20000),
+                Path(temporary),
+            )
+            self.assertEqual(context.run_until_iter, 20000)
+            with self.assertRaisesRegex(ExperimentError, "run-until-iter"):
+                configure_experiment(
+                    make_cfg(),
+                    make_args(run_until_iter=500000),
+                    Path(temporary),
+                )
+
+    def test_eval_only_rejects_run_until_iter(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ExperimentError, "run-until-iter"):
+                configure_experiment(
+                    make_cfg(),
+                    make_args(eval_only=True, run_until_iter=200),
+                    Path(temporary),
+                )
+
     def test_valid_and_invalid_experiment_ids(self):
         validate_experiment_id("sar-005")
         validate_experiment_id("sar-test-001")
@@ -252,12 +277,30 @@ class DirectorySafetyTests(unittest.TestCase):
             )
             self.assertEqual(context.run_dir, resolve_run_dir(root, context.metadata))
 
-    def test_fresh_training_rejects_nonempty_directory(self):
+    def test_fresh_training_returns_nonempty_existing_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
             context = configure_experiment(make_cfg(), make_args(), Path(temporary))
             context.output_dir.mkdir(parents=True)
             (context.output_dir / "existing.txt").write_text("occupied")
-            with self.assertRaisesRegex(ExperimentError, "非空目录"):
+            self.assertEqual(
+                validate_output_state(context), context.output_dir.resolve()
+            )
+            with self.assertRaisesRegex(ExperimentError, "已经存在"):
+                initialize_experiment(context, make_cfg())
+
+    def test_fresh_training_allows_missing_or_empty_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = configure_experiment(make_cfg(), make_args(), Path(temporary))
+            self.assertIsNone(validate_output_state(context))
+            context.output_dir.mkdir(parents=True)
+            self.assertIsNone(validate_output_state(context))
+
+    def test_fresh_training_rejects_output_path_that_is_a_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = configure_experiment(make_cfg(), make_args(), Path(temporary))
+            context.output_dir.parent.mkdir(parents=True)
+            context.output_dir.write_text("not a directory", encoding="utf-8")
+            with self.assertRaisesRegex(ExperimentError, "不是目录"):
                 validate_output_state(context)
 
     def test_resume_requires_valid_checkpoint_marker(self):
@@ -285,6 +328,25 @@ class DirectorySafetyTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ExperimentError, "SEED"):
                 configure_experiment(cfg, make_args(), Path(temporary))
+
+    def test_existing_legacy_training_is_reported_before_seed_validation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cfg = make_cfg(
+                **{
+                    "EXPERIMENT.ID": "sar-001",
+                    "SEED": -1,
+                }
+            )
+            run_dir = (
+                root
+                / "runs/sar_ship"
+                / "sar-001__r18-fpn128-seed40244023"
+            )
+            run_dir.mkdir(parents=True)
+            (run_dir / "metrics.json").write_text("{}\n", encoding="utf-8")
+            context = configure_experiment(cfg, make_args(), root)
+            self.assertEqual(validate_output_state(context), run_dir.resolve())
 
     def test_evaluation_gets_timestamped_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -372,6 +434,55 @@ class DirectorySafetyTests(unittest.TestCase):
 
 
 class ManifestTests(unittest.TestCase):
+    def test_resume_preserves_screening_history(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cfg = make_cfg()
+            first = configure_experiment(
+                cfg,
+                make_args(run_until_iter=200),
+                root,
+            )
+            initialize_experiment(first, cfg)
+            finish_experiment(first, status="paused")
+            manifest_path = first.output_dir / "experiment_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["screening_history"] = [
+                {"status": "promoted", "reason": "passed 200 iter"}
+            ]
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            (first.output_dir / "model_latest.pth").write_bytes(b"checkpoint")
+            (first.output_dir / "last_checkpoint").write_text(
+                "model_latest.pth", encoding="utf-8"
+            )
+
+            resumed = configure_experiment(
+                cfg,
+                make_args(resume=True, run_until_iter=5000),
+                root,
+            )
+            resumed_manifest = initialize_experiment(resumed, cfg)
+
+            self.assertEqual(
+                resumed_manifest["screening_history"],
+                [{"status": "promoted", "reason": "passed 200 iter"}],
+            )
+
+    def test_paused_lifecycle_does_not_write_completed_summary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = configure_experiment(
+                make_cfg(),
+                make_args(run_until_iter=200),
+                Path(temporary),
+            )
+            initialize_experiment(context, make_cfg())
+            finish_experiment(context, status="paused")
+            manifest = json.loads(
+                (context.output_dir / "experiment_manifest.json").read_text()
+            )
+            self.assertEqual(manifest["status"], "paused")
+            self.assertFalse((context.output_dir / "result_summary.json").exists())
+
     def test_manifest_and_summary_lifecycle(self):
         with tempfile.TemporaryDirectory() as temporary:
             context = configure_experiment(make_cfg(), make_args(), Path(temporary))
@@ -395,6 +506,7 @@ class ManifestTests(unittest.TestCase):
             self.assertFalse(
                 manifest["parameters"]["SOLVER.AMP.ENABLED"]
             )
+            self.assertEqual(len(manifest["execution"]["config_sha256"]), 64)
             finish_experiment(context, results={"bbox": {"AP": 66.9}})
             self.assertEqual(
                 json.loads(manifest_path.read_text())["status"], "completed"

@@ -1,0 +1,16 @@
+_BASE_: "../../machine/Rtx2080ti-SAR-Under10M.yaml"
+
+EXPERIMENT:
+  ID: "sar-009"
+  NAME: "mnv4-small-h128-shared-screen"
+  DATASET: "sar_ship"
+  DESCRIPTION: "以 sar-008 为对照，在完全共享头下将 FPN/HIDDEN 从 64 提升到 128，用释放的参数预算增强特征与定位容量。"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  FPN:
+    OUT_CHANNELS: 128
+  DiffusionDet:
+    HIDDEN_DIM: 128
+    HEAD_SHARING: "full"
+

@@ -1,0 +1,9 @@
+_BASE_: "sar-012-under10m-timm-mnv4-pretrained.yaml"
+
+EXPERIMENT:
+  ID: "sar-016"
+  NAME: "timm-mnv4-h128-shared-full-seed40244023"
+  DATASET: "sar_ship"
+  DESCRIPTION: "由 sar-012 的 50k 筛选结果晋级：timm MobileNetV4-Conv-Small、ImageNet 预训练、FPN/HIDDEN=128、六级完全共享头、固定 256、无蒸馏，使用种子 40244023 从头执行完整 254264 iter。"
+  OUTPUT_ROOT: "./runs"
+

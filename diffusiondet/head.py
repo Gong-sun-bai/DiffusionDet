@@ -85,8 +85,25 @@ class DynamicHead(nn.Module):
         dropout = cfg.MODEL.DiffusionDet.DROPOUT
         activation = cfg.MODEL.DiffusionDet.ACTIVATION
         num_heads = cfg.MODEL.DiffusionDet.NUM_HEADS
+        head_sharing = cfg.MODEL.DiffusionDet.HEAD_SHARING
         rcnn_head = RCNNHead(cfg, d_model, num_classes, dim_feedforward, nhead, dropout, activation)
-        self.head_series = _get_clones(rcnn_head, num_heads)
+        if head_sharing == "none":
+            self.head_series = _get_clones(rcnn_head, num_heads)
+        elif head_sharing == "full":
+            self.head_series = nn.ModuleList([rcnn_head])
+        elif head_sharing == "heavy":
+            self.head_series = _get_clones(rcnn_head, num_heads)
+            shared = self.head_series[0]
+            for stage in self.head_series[1:]:
+                stage.inst_interact = shared.inst_interact
+                stage.linear1 = shared.linear1
+                stage.linear2 = shared.linear2
+        else:
+            raise ValueError(
+                "MODEL.DiffusionDet.HEAD_SHARING must be none, full, or heavy; "
+                f"got {head_sharing!r}"
+            )
+        self.head_sharing = head_sharing
         self.num_heads = num_heads
         self.return_intermediate = cfg.MODEL.DiffusionDet.DEEP_SUPERVISION
 
@@ -160,7 +177,12 @@ class DynamicHead(nn.Module):
         else:
             proposal_features = None
         
-        for head_idx, rcnn_head in enumerate(self.head_series):
+        for head_idx in range(self.num_heads):
+            rcnn_head = (
+                self.head_series[0]
+                if self.head_sharing == "full"
+                else self.head_series[head_idx]
+            )
             class_logits, pred_bboxes, proposal_features = rcnn_head(features, bboxes, proposal_features, self.box_pooler, time)
             if self.return_intermediate:
                 inter_class_logits.append(class_logits)

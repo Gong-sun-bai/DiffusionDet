@@ -1,0 +1,19 @@
+_BASE_: "sar-013-under10m-repvit-pretrained.yaml"
+
+EXPERIMENT:
+  ID: "sar-014"
+  NAME: "under10m-best-student-distilled-screen"
+  DATASET: "sar_ship"
+  DESCRIPTION: "由剩余筛选脚本基于 50k 最强无蒸馏学生 sar-013 生成；仅测试 sar-006 查询一致蒸馏，使用相同完整 schedule 并按 200/20k/50k 暂停。"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  DiffusionDet:
+    DISTILLATION:
+      ENABLED: True
+      TEACHER_WEIGHTS: "runs/sar_ship/sar-006__r18-fpn128-h128-bs25-it254264-fixed256-seed40244023/model_best.pth"
+      CONFIDENCE_THRESHOLD: 0.5
+      TEMPERATURE: 2.0
+      CLS_WEIGHT: 1.0
+      L1_WEIGHT: 1.0
+      GIOU_WEIGHT: 1.0

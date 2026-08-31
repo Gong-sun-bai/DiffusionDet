@@ -1,0 +1,9 @@
+_BASE_: "sar-013-under10m-repvit-pretrained.yaml"
+
+EXPERIMENT:
+  ID: "sar-015"
+  NAME: "repvit-m09-h128-shared-full-seed40244023"
+  DATASET: "sar_ship"
+  DESCRIPTION: "由 sar-013 的 50k 筛选结果晋级：RepViT-M0.9、ImageNet 预训练、FPN/HIDDEN=128、六级完全共享头、固定 256、无蒸馏，使用种子 40244023 从头执行完整 254264 iter。"
+  OUTPUT_ROOT: "./runs"
+

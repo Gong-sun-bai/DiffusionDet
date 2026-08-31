@@ -1,0 +1,9 @@
+_BASE_: "../../machine/Rtx2080ti-SAR-Under10M.yaml"
+
+EXPERIMENT:
+  ID: "sar-007"
+  NAME: "mnv4-small-h64-independent-screen"
+  DATASET: "sar_ship"
+  DESCRIPTION: "10M 以下固定种子控制组：本地 MobileNetV4-Small、FPN/HIDDEN=64、六级独立头、固定 256 与有效完整 schedule；通过 run-until-iter 分层筛选。"
+  OUTPUT_ROOT: "./runs"
+

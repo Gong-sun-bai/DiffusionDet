@@ -25,6 +25,8 @@ def add_diffusiondet_config(cfg):
     cfg.MODEL.DiffusionDet.NUM_CLS = 1
     cfg.MODEL.DiffusionDet.NUM_REG = 3
     cfg.MODEL.DiffusionDet.NUM_HEADS = 6
+    cfg.MODEL.DiffusionDet.HEAD_SHARING = "none"
+    cfg.MODEL.DiffusionDet.INFERENCE_HEAD_STAGE = -1
 
     # Dynamic Conv.
     cfg.MODEL.DiffusionDet.NUM_DYNAMIC = 2
@@ -50,9 +52,32 @@ def add_diffusiondet_config(cfg):
     # Diffusion
     cfg.MODEL.DiffusionDet.SNR_SCALE = 2.0
     cfg.MODEL.DiffusionDet.SAMPLE_STEP = 1
+    cfg.MODEL.DiffusionDet.DDIM_ETA = 1.0
+    cfg.MODEL.DiffusionDet.BOX_RENEWAL = True
+    cfg.MODEL.DiffusionDet.RENEWAL_THRESHOLD = 0.5
+    cfg.MODEL.DiffusionDet.ENSEMBLE_MODE = "legacy_nonfinal"
 
     # Inference
     cfg.MODEL.DiffusionDet.USE_NMS = True
+
+    # Generic timm features-only backbone. The selected model must expose four
+    # feature levels with reductions 4/8/16/32.
+    cfg.MODEL.TIMM = CN()
+    cfg.MODEL.TIMM.NAME = "mobilenetv4_conv_small.e3600_r256_in1k"
+    cfg.MODEL.TIMM.PRETRAINED = False
+    cfg.MODEL.TIMM.OUT_INDICES = (1, 2, 3, 4)
+    cfg.MODEL.TIMM.OUT_FEATURES = ("stage1", "stage2", "stage3", "stage4")
+
+    # Optional query-consistent teacher distillation. The teacher is created
+    # lazily during training and is excluded from the student state_dict.
+    cfg.MODEL.DiffusionDet.DISTILLATION = CN()
+    cfg.MODEL.DiffusionDet.DISTILLATION.ENABLED = False
+    cfg.MODEL.DiffusionDet.DISTILLATION.TEACHER_WEIGHTS = ""
+    cfg.MODEL.DiffusionDet.DISTILLATION.CONFIDENCE_THRESHOLD = 0.5
+    cfg.MODEL.DiffusionDet.DISTILLATION.TEMPERATURE = 2.0
+    cfg.MODEL.DiffusionDet.DISTILLATION.CLS_WEIGHT = 1.0
+    cfg.MODEL.DiffusionDet.DISTILLATION.L1_WEIGHT = 1.0
+    cfg.MODEL.DiffusionDet.DISTILLATION.GIOU_WEIGHT = 1.0
 
     # Swin Backbones
     cfg.MODEL.SWIN = CN()

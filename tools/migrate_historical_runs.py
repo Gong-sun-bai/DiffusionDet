@@ -21,6 +21,7 @@ MANIFEST = "experiment_manifest.json"
 REQUIRED_FILES = ("config.yaml", "log.txt", "metrics.json", "last_checkpoint")
 # 训练可视化是迁移后由日志派生的便捷产物，不属于最初迁移的原始证据快照。
 DERIVED_FILES = {"results.png"}
+DERIVED_DIRECTORIES = {"evaluations"}
 EXPERIMENT_DESCRIPTIONS = {
     "sar-000": (
         "SAR ResNet-50、FPN/HIDDEN=256、ImageNet 预训练的历史精度基线；"
@@ -252,6 +253,9 @@ def raw_snapshot(directory: Path) -> dict[str, Any]:
         if path.is_file()
         and path.name != MANIFEST
         and path.relative_to(directory).as_posix() not in DERIVED_FILES
+        # 规范复评会持续追加 evaluations/<UTC时间戳>/，它们和 results.png
+        # 一样是迁移后派生证据，不属于必须保持不变的历史训练快照。
+        and path.relative_to(directory).parts[0] not in DERIVED_DIRECTORIES
     )
     return {
         "file_count": len(files),

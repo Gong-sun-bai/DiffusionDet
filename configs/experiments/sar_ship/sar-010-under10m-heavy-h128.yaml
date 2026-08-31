@@ -1,0 +1,16 @@
+_BASE_: "../../machine/Rtx2080ti-SAR-Under10M.yaml"
+
+EXPERIMENT:
+  ID: "sar-010"
+  NAME: "mnv4-small-h128-heavy-screen"
+  DATASET: "sar_ship"
+  DESCRIPTION: "以 sar-009 为对照，将完全共享改为只共享 DynamicConv 与 FFN，保留 stage-specific attention、time、分类与回归分支。"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  FPN:
+    OUT_CHANNELS: 128
+  DiffusionDet:
+    HIDDEN_DIM: 128
+    HEAD_SHARING: "heavy"
+

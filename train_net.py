@@ -33,6 +33,7 @@ from detectron2.engine import DefaultTrainer, default_argument_parser, default_s
 from detectron2.evaluation import COCOEvaluator, LVISEvaluator, verify_results
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.modeling import build_model
+from detectron2.utils.events import EventStorage
 
 from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, DiffusionDetWithTTA, add_mobilenetv4_config
 from diffusiondet.util.model_ema import add_model_ema_configs, may_build_model_ema, may_get_ema_checkpointer, EMAHook, \
@@ -50,12 +51,15 @@ from experiment_manager import (
     configure_experiment,
     finish_experiment,
     initialize_experiment,
+    validate_output_state,
 )
 
 class Trainer(DefaultTrainer):
     """ Extension of the Trainer class adapted to DiffusionDet. """
 
-    def __init__(self, cfg):
+    SCREENING_CHECKPOINT_PERIOD = 1000
+
+    def __init__(self, cfg, run_until_iter=None):
         """
         Args:
             cfg (CfgNode):
@@ -91,7 +95,17 @@ class Trainer(DefaultTrainer):
             # trainer=weakref.proxy(self),
         )
         self.start_iter = 0
-        self.max_iter = cfg.SOLVER.MAX_ITER
+        self.full_max_iter = int(cfg.SOLVER.MAX_ITER)
+        self.run_until_iter = (
+            min(self.full_max_iter, int(run_until_iter))
+            if run_until_iter is not None
+            else None
+        )
+        self.max_iter = (
+            self.run_until_iter
+            if self.run_until_iter is not None
+            else self.full_max_iter
+        )
         self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
@@ -243,19 +257,24 @@ class Trainer(DefaultTrainer):
         # be saved by checkpointer.
         # This is not always the best: if checkpointing has a different frequency,
         # some checkpoints may have more precise statistics than others.
+        checkpoint_period = self.checkpoint_period(
+            cfg.SOLVER.CHECKPOINT_PERIOD,
+            self.run_until_iter,
+            self.full_max_iter,
+        )
         if comm.is_main_process():
             if cfg.SOLVER.CHECKPOINT_RETENTION == "latest":
                 ret.append(
                     LatestCheckpointer(
                         self.checkpointer,
-                        cfg.SOLVER.CHECKPOINT_PERIOD,
+                        checkpoint_period,
                     )
                 )
             else:
                 ret.append(
                     hooks.PeriodicCheckpointer(
                         self.checkpointer,
-                        cfg.SOLVER.CHECKPOINT_PERIOD,
+                        checkpoint_period,
                     )
                 )
 
@@ -293,6 +312,35 @@ class Trainer(DefaultTrainer):
                 )
         return ret
 
+    @classmethod
+    def checkpoint_period(cls, configured_period, run_until_iter, full_max_iter):
+        """Use denser recovery checkpoints only for bounded screening runs."""
+        configured_period = int(configured_period)
+        if run_until_iter is not None and int(run_until_iter) < int(full_max_iter):
+            return min(configured_period, cls.SCREENING_CHECKPOINT_PERIOD)
+        return configured_period
+
+    def evaluate_resumed_rung(self, iteration):
+        """Evaluate an already-reached screening rung without another update.
+
+        A process can be interrupted after the rung checkpoint is saved but
+        before its final validation finishes.  Detectron2's regular no-op
+        train loop increments the storage iteration once, which would record
+        the recovered metric at ``rung + 1``.  Running the hooks explicitly at
+        the requested absolute iteration preserves the exact-rung evidence and
+        still exercises EvalHook, the best-checkpoint hook, and all writers.
+        """
+        iteration = int(iteration)
+        self.iter = iteration
+        self.start_iter = iteration
+        self.max_iter = iteration
+        with EventStorage(iteration) as self.storage:
+            try:
+                self.before_train()
+            finally:
+                self.after_train()
+        return getattr(self, "_last_eval_results", None)
+
 
 def setup(args):
     """
@@ -314,6 +362,25 @@ def setup(args):
             weights = repository_root / weights
         cfg.MODEL.WEIGHTS = str(weights.resolve())
     cfg.freeze()
+
+    # Plain training is intentionally idempotent.  A repeated command reports
+    # the canonical result directory and exits before logging, model building,
+    # data loading, or any write to the historical run.
+    existing_run_dir = validate_output_state(context)
+    if existing_run_dir is not None:
+        if comm.is_main_process():
+            print(
+                "检测到相同实验的已有结果目录，跳过重复训练："
+                f"{existing_run_dir}",
+                flush=True,
+            )
+            print(
+                "如需继续未完成实验，请使用同一配置并追加 --resume。",
+                flush=True,
+            )
+        comm.synchronize()
+        return cfg, context, existing_run_dir
+
     if comm.is_main_process():
         initialize_experiment(context, cfg)
     comm.synchronize()
@@ -323,13 +390,19 @@ def setup(args):
         if comm.is_main_process():
             finish_experiment(context, error=error)
         raise
-    return cfg, context
+    return cfg, context, None
 
 
 def main(args):
     context = None
     try:
-        cfg, context = setup(args)
+        cfg, context, existing_run_dir = setup(args)
+
+        if existing_run_dir is not None:
+            return {
+                "status": "skipped_existing",
+                "run_dir": str(existing_run_dir),
+            }
 
         if args.eval_only:
             model = Trainer.build_model(cfg)
@@ -350,11 +423,26 @@ def main(args):
                 finish_experiment(context, results=results)
             return results
 
-        trainer = Trainer(cfg)
+        trainer = Trainer(cfg, run_until_iter=context.run_until_iter)
         trainer.resume_or_load(resume=args.resume)
-        results = trainer.train()
+        if (
+            args.resume
+            and context.run_until_iter is not None
+            and trainer.start_iter >= trainer.max_iter
+        ):
+            results = trainer.evaluate_resumed_rung(context.run_until_iter)
+        else:
+            results = trainer.train()
         if comm.is_main_process():
-            finish_experiment(context, results=results)
+            paused = (
+                context.run_until_iter is not None
+                and context.run_until_iter < int(cfg.SOLVER.MAX_ITER)
+            )
+            finish_experiment(
+                context,
+                results=results,
+                status="paused" if paused else "completed",
+            )
         return results
     except BaseException as error:
         if context is not None and comm.is_main_process():
@@ -363,7 +451,17 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = default_argument_parser().parse_args()
+    parser = default_argument_parser()
+    parser.add_argument(
+        "--run-until-iter",
+        type=int,
+        default=None,
+        help=(
+            "Stop normally after this absolute iteration while preserving the "
+            "full SOLVER.MAX_ITER schedule for a later --resume."
+        ),
+    )
+    args = parser.parse_args()
     print("Command Line Args:", args)
     launch(
         main,

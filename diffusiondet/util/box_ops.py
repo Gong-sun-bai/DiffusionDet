@@ -61,6 +61,33 @@ def generalized_box_iou(boxes1, boxes2):
     return iou - (area - union) / area
 
 
+def aligned_generalized_box_iou(boxes1, boxes2):
+    """Return GIoU for aligned pairs without materializing an N-by-N matrix."""
+    if boxes1.shape != boxes2.shape or boxes1.shape[-1] != 4:
+        raise ValueError(
+            f"aligned boxes must have the same (..., 4) shape, got "
+            f"{tuple(boxes1.shape)} and {tuple(boxes2.shape)}"
+        )
+    area1 = (boxes1[..., 2:] - boxes1[..., :2]).clamp(min=0).prod(dim=-1)
+    area2 = (boxes2[..., 2:] - boxes2[..., :2]).clamp(min=0).prod(dim=-1)
+    intersection_wh = (
+        torch.minimum(boxes1[..., 2:], boxes2[..., 2:])
+        - torch.maximum(boxes1[..., :2], boxes2[..., :2])
+    ).clamp(min=0)
+    intersection = intersection_wh.prod(dim=-1)
+    union = area1 + area2 - intersection
+    iou = intersection / union.clamp(min=torch.finfo(union.dtype).eps)
+
+    enclosing_wh = (
+        torch.maximum(boxes1[..., 2:], boxes2[..., 2:])
+        - torch.minimum(boxes1[..., :2], boxes2[..., :2])
+    ).clamp(min=0)
+    enclosing = enclosing_wh.prod(dim=-1)
+    return iou - (enclosing - union) / enclosing.clamp(
+        min=torch.finfo(enclosing.dtype).eps
+    )
+
+
 def masks_to_boxes(masks):
     """Compute the bounding boxes around the provided masks
 

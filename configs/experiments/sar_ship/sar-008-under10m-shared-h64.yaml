@@ -1,0 +1,13 @@
+_BASE_: "../../machine/Rtx2080ti-SAR-Under10M.yaml"
+
+EXPERIMENT:
+  ID: "sar-008"
+  NAME: "mnv4-small-h64-shared-screen"
+  DATASET: "sar_ship"
+  DESCRIPTION: "以 sar-007 为对照，只将六级独立 RCNNHead 改为完全共享，用于验证跨 stage 权重共享。"
+  OUTPUT_ROOT: "./runs"
+
+MODEL:
+  DiffusionDet:
+    HEAD_SHARING: "full"
+

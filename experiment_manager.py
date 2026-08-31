@@ -7,6 +7,7 @@ rules can be tested before the model environment is restored.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import platform
 import re
@@ -61,6 +62,7 @@ class ExperimentContext:
     config_file: Path
     command: tuple[str, ...]
     weights: str
+    run_until_iter: Optional[int]
 
 
 def utc_now() -> datetime:
@@ -214,6 +216,14 @@ def resolve_run_dir(repository_root: Path, metadata: ExperimentMetadata) -> Path
     )
 
 
+def existing_training_result(run_dir: Path) -> Optional[Path]:
+    """Return a canonical non-empty run directory, if one already exists."""
+    run_dir = Path(run_dir)
+    if run_dir.is_dir() and any(run_dir.iterdir()):
+        return run_dir.resolve()
+    return None
+
+
 def configure_experiment(
     cfg: Any,
     args: Any,
@@ -226,17 +236,31 @@ def configure_experiment(
     eval_only = bool(getattr(args, "eval_only", False))
     resume = bool(getattr(args, "resume", False))
     options = tuple(getattr(args, "opts", ()) or ())
+    run_until_iter = getattr(args, "run_until_iter", None)
+    if run_until_iter is not None:
+        run_until_iter = int(run_until_iter)
     if eval_only and resume:
         raise ExperimentError("--eval-only 与 --resume 不能同时使用。")
+    if eval_only and run_until_iter is not None:
+        raise ExperimentError("--eval-only 不能与 --run-until-iter 同时使用。")
 
     mode = "evaluation" if eval_only else ("resume" if resume else "train")
     validate_metadata(metadata)
-    if mode != "evaluation":
+    run_dir = resolve_run_dir(repository_root, metadata)
+    repeated_training = (
+        mode == "train" and existing_training_result(run_dir) is not None
+    )
+    if mode != "evaluation" and not repeated_training:
+        max_iter = int(_get(cfg, "SOLVER.MAX_ITER", 0))
         validate_training_parameters(
             seed=int(_get(cfg, "SEED", -1)),
-            max_iter=int(_get(cfg, "SOLVER.MAX_ITER", 0)),
+            max_iter=max_iter,
             steps=_get(cfg, "SOLVER.STEPS", ()),
         )
+        if run_until_iter is not None and not 0 < run_until_iter <= max_iter:
+            raise ExperimentError(
+                "--run-until-iter 必须大于 0 且不超过 SOLVER.MAX_ITER。"
+            )
     validate_checkpoint_policy(cfg)
     validate_training_plot_policy(cfg)
 
@@ -251,7 +275,6 @@ def configure_experiment(
             allowed = "、".join(sorted(MODEL_WEIGHT_FILENAMES))
             raise ExperimentError(f"评估权重文件名只能为：{allowed}。")
 
-    run_dir = resolve_run_dir(repository_root, metadata)
     output_dir = (
         run_dir / "evaluations" / utc_timestamp(now)
         if mode == "evaluation"
@@ -270,10 +293,18 @@ def configure_experiment(
         config_file=config_file,
         command=tuple(sys.argv),
         weights=weights,
+        run_until_iter=run_until_iter,
     )
 
 
-def validate_output_state(context: ExperimentContext) -> None:
+def validate_output_state(context: ExperimentContext) -> Optional[Path]:
+    """Validate the target state and return an existing training result.
+
+    A plain training invocation is idempotent: when its canonical, non-empty
+    run directory already exists, the caller receives that path and can exit
+    normally without touching any historical artifact.  Resume and evaluation
+    retain their stricter validation rules.
+    """
     if context.mode == "resume":
         marker = context.run_dir / "last_checkpoint"
         if not marker.is_file():
@@ -286,7 +317,7 @@ def validate_output_state(context: ExperimentContext) -> None:
             raise ExperimentError(
                 f"last_checkpoint 指向的检查点不存在：{checkpoint_name!r}"
             )
-        return
+        return None
 
     if context.mode == "evaluation":
         if not context.run_dir.is_dir():
@@ -298,12 +329,14 @@ def validate_output_state(context: ExperimentContext) -> None:
             raise ExperimentError(f"评估权重不存在：{weights}")
         if context.output_dir.exists():
             raise ExperimentError(f"评估输出目录已存在：{context.output_dir}")
-        return
+        return None
 
-    if context.output_dir.exists() and any(context.output_dir.iterdir()):
-        raise ExperimentError(
-            f"新训练拒绝复用非空目录：{context.output_dir}；请更换实验 ID/名称。"
-        )
+    if context.output_dir.exists() and not context.output_dir.is_dir():
+        raise ExperimentError(f"实验输出路径不是目录：{context.output_dir}")
+    existing_run_dir = existing_training_result(context.output_dir)
+    if existing_run_dir is not None:
+        return existing_run_dir
+    return None
 
 
 def _git_state(repository_root: Path) -> dict[str, Any]:
@@ -349,6 +382,19 @@ def _environment_summary() -> dict[str, Any]:
     }
 
 
+def config_sha256(cfg: Any) -> str:
+    if hasattr(cfg, "dump"):
+        serialized = cfg.dump()
+    else:
+        serialized = json.dumps(
+            _json_safe(cfg),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 def _key_parameters(cfg: Any) -> dict[str, Any]:
     keys = (
         "SEED",
@@ -357,8 +403,14 @@ def _key_parameters(cfg: Any) -> dict[str, Any]:
         "MODEL.RESNETS.DEPTH",
         "MODEL.FPN.OUT_CHANNELS",
         "MODEL.DiffusionDet.HIDDEN_DIM",
+        "MODEL.DiffusionDet.HEAD_SHARING",
         "MODEL.DiffusionDet.NUM_PROPOSALS",
         "MODEL.DiffusionDet.SAMPLE_STEP",
+        "MODEL.DiffusionDet.ENSEMBLE_MODE",
+        "MODEL.DiffusionDet.INFERENCE_HEAD_STAGE",
+        "MODEL.DiffusionDet.DISTILLATION.ENABLED",
+        "MODEL.TIMM.NAME",
+        "MODEL.TIMM.PRETRAINED",
         "SOLVER.IMS_PER_BATCH",
         "SOLVER.BASE_LR",
         "SOLVER.MAX_ITER",
@@ -409,13 +461,19 @@ def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def initialize_experiment(context: ExperimentContext, cfg: Any) -> dict[str, Any]:
-    validate_output_state(context)
+    existing_run_dir = validate_output_state(context)
+    if existing_run_dir is not None:
+        raise ExperimentError(
+            f"实验结果目录已经存在，不能重新初始化：{existing_run_dir}"
+        )
     context.output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = context.output_dir / MANIFEST_FILENAME
     execution_history = []
+    screening_history = []
     if context.mode == "resume" and manifest_path.is_file():
         previous = json.loads(manifest_path.read_text(encoding="utf-8"))
         execution_history = list(previous.get("execution_history", ()))
+        screening_history = list(previous.get("screening_history", ()))
         if previous.get("execution"):
             execution_history.append(previous["execution"])
     started_at = utc_now().isoformat()
@@ -435,11 +493,14 @@ def initialize_experiment(context: ExperimentContext, cfg: Any) -> dict[str, Any
             "config_file": str(context.config_file),
             "output_dir": str(context.output_dir),
             "command": list(context.command),
+            "run_until_iter": context.run_until_iter,
+            "config_sha256": config_sha256(cfg),
             "git": _git_state(context.repository_root),
             "environment": _environment_summary(),
         },
         "parameters": _key_parameters(cfg),
         "execution_history": execution_history,
+        "screening_history": screening_history,
         "error": None,
     }
     atomic_write_json(manifest_path, payload)
@@ -461,12 +522,23 @@ def finish_experiment(
     *,
     results: Any = None,
     error: Optional[BaseException] = None,
+    status: Optional[str] = None,
 ) -> None:
     manifest_path = context.output_dir / MANIFEST_FILENAME
     if not manifest_path.is_file():
         return
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    payload["status"] = "failed" if error is not None else "completed"
+    if status is not None and status not in {
+        "paused",
+        "promoted",
+        "screened_out",
+        "completed",
+        "failed",
+    }:
+        raise ValueError(f"unsupported experiment status: {status}")
+    payload["status"] = (
+        "failed" if error is not None else (status or "completed")
+    )
     payload["execution"]["finished_at"] = utc_now().isoformat()
     payload["error"] = (
         {"type": type(error).__name__, "message": str(error)}
@@ -474,7 +546,7 @@ def finish_experiment(
         else None
     )
     atomic_write_json(manifest_path, payload)
-    if error is None:
+    if error is None and payload["status"] == "completed":
         atomic_write_json(
             context.output_dir / SUMMARY_FILENAME,
             {

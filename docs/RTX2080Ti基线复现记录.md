@@ -1,6 +1,6 @@
 # RTX 2080 Ti 基线环境恢复与冒烟复现记录
 
-> 首次执行日期：2026-07-23；状态更新：2026-08-05
+> 首次执行日期：2026-07-23；状态更新：2026-08-31
 > 工作站：`troy-compute`
 > 仓库：`/home/troy/workspace/DiffusionDet`
 > 验证范围：SAR ResNet-18 / FPN 128 固定种子基线的环境、数据、建模、反向传播与检查点链路
@@ -19,6 +19,8 @@
 - 本地 Detectron2 `_C`：按 CPU-only 方式重新编译，已通过导入
 
 `sar-test-001` 已完成 20 次真实训练迭代，Batch 16 未发生 OOM。随后 `sar-005` 以 Batch 25、254,264 iter 和 256–1024 多尺度训练完成，峰值显存 19,403 MB，最终 `AP=58.84`。固定 256 的 `sar-006` 已在相同种子、Batch、学习率和训练步数下完成，峰值显存 15,620 MB，最佳 `AP=67.7707`，现为可重复基线。
+
+10M 以下分层筛选也已在本机完成：`sar-013`（RepViT-M0.9，9,438,437 参数）50k 达到 `AP=61.9773`，`sar-012`（MobileNetV4-Conv-Small，6,037,605 参数）50k 达到 `AP=57.3590`。二者的独立正式全量配置为 `sar-015`、`sar-016`；截至本次更新均未启动。
 
 ## 2. 环境创建
 
@@ -167,7 +169,7 @@ runs/sar_ship/sar-test-001__r18-fpn128-h128-bs16-it20-smoke-seed40244023/
 
 `last_checkpoint` 指向 `model_final.pth`，清单和结果摘要状态均为 `completed`。`metrics.json` 只有 writer 在 iter 19 写出的最终一行，这是 20-iter 配置的预期行为。损失数值尚未收敛，不应与历史最终指标比较。
 
-该目录已非空，训练入口会拒绝不带 `--resume` 的重复运行。冒烟已经完成，不应为了“再验证一次”删除或覆盖该目录；需要新的烟测时应分配新的测试实验 ID，下一编号为 `sar-test-002`。
+该目录已非空，不带 `--resume` 重复执行时，训练入口会打印已有目录的绝对路径并正常退出，不会覆盖任何产物。冒烟已经完成，不应为了“再验证一次”删除或覆盖该目录；需要新的烟测时应分配新的测试实验 ID，下一编号为 `sar-test-002`。
 
 ## 6. 固定 256 正式结果与复评
 
@@ -196,7 +198,7 @@ python train_net.py --num-gpus 1 \
 
 ### 7.1 实验身份
 
-- 正式实验必须分配新的未占用 ID；当前 `sar-000` 至 `sar-006` 已占用，下一编号为 `sar-007`。
+- 正式实验必须分配新的未占用 ID；`sar-000` 至 `sar-016` 已被历史结果、screening 或独立正式配置占用，下一编号为 `sar-017`。
 - `smoke` 直接使用 `<dataset>-test-NNN`，只验证运行链路，不进入 AP 排名，也不能充当消融基线；下一测试编号为 `sar-test-002`。
 - `EXPERIMENT.DESCRIPTION` 是可选自由文本，用于简要记录对照实验、主要改动、目的和限制，不参与运行逻辑。
 - 一次实验只改变一个概念因素。结构兼容所需的成组参数必须在 `DESCRIPTION` 和实验日志中说明。
@@ -247,10 +249,19 @@ Batch 改变必须使用新实验 ID，并在 `DESCRIPTION` 中概括 Batch、�
 ## 8. 验证命令
 
 ```bash
-python -m unittest tests.test_experiment -v
+python -m unittest discover -s tests -p 'test_*.py' -v
 python tools/validate_experiment_configs.py
 python tools/migrate_historical_runs.py --verify
 git diff --check
 ```
 
-本次最终结果以 `docs/实验日志.md`、`sar-test-001` 和 `sar-006` 的运行清单为索引，模型权重与运行产物仍保存在被 Git 忽略的 `runs/`。
+正式训练必须在筛选代码和文档形成 Git commit 后逐个运行。优先启动 `sar-015`：
+
+```bash
+python train_net.py --num-gpus 1 \
+  --config-file configs/experiments/sar_ship/sar-015-under10m-repvit-full-seed40244023.yaml
+```
+
+完成并分析 `sar-015` 后，再决定是否单独运行 `sar-016`。恢复未完成实验时使用同一配置并追加 `--resume`；不要同时启动两个正式实验。
+
+本次最终状态以 `docs/实验日志.md`、`sar-test-001`、`sar-006`、`sar-007`～`sar-014` 的运行清单和筛选汇总为索引，模型权重与运行产物仍保存在被 Git 忽略的 `runs/`。

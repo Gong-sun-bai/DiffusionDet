@@ -35,7 +35,8 @@ python -c "import detectron2; from detectron2 import _C; print(detectron2.__file
 
 - SAR 船舶单类别检测；
 - PANDA 四类别检测；
-- ResNet-50、ResNet-18 与 MobileNetV4 的精度/体量权衡；
+- ResNet-50、ResNet-18、MobileNetV4 与 RepViT 的精度/体量权衡；
+- 六级动态头共享、`timm` 轻量 backbone、扩散采样和查询一致蒸馏；
 - 固定基线后的单因素模型与训练策略消融。
 
 核心入口：
@@ -83,15 +84,21 @@ runs/<DATASET>/<ID>__<NAME>/
 - `sar-005`：已完成的固定种子、多尺度 Batch 25 基线，AP 58.84；目录名与实际 Batch/Iter 不一致，以冻结配置为准；
 - `sar-006`：已完成的固定 256 可重复基线，最佳 AP 67.77，沿用 `sar-005` 的 Batch 25 和 254264 iter；
 - `sar-test-001`：已完成的 RTX 2080 Ti Batch 16 / 20 iter 冒烟，不含 AP；
+- `sar-007`～`sar-010`：本地 MobileNetV4 与 head sharing 的 20k screening，均已淘汰；
+- `sar-011`：标准 MobileNetV4 scratch 50k 对照，已淘汰；
+- `sar-012`：标准 MobileNetV4 预训练 50k finalist，AP 57.36、6.04M 参数；
+- `sar-013`：RepViT-M0.9 预训练 50k finalist，AP 61.98、9.44M 参数；
+- `sar-014`：查询一致蒸馏 50k screening，AP 60.36，已淘汰；
+- `sar-015` / `sar-016`：两名 finalist 的固定种子完整训练配置，尚未启动，需分别手工运行；
 - `panda-000`：历史 PANDA 四类别基线。
 
-下一未占用正式 SAR 序号为 `sar-007`，下一测试序号为 `sar-test-002`。正式 ID 使用 `<dataset>-NNN`，测试实验直接使用 `<dataset>-test-NNN`；测试 ID 只用于 smoke，不进入正式实验排名。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
+下一未占用正式 SAR 序号为 `sar-017`，下一测试序号为 `sar-test-002`。正式 ID 使用 `<dataset>-NNN`，测试实验直接使用 `<dataset>-test-NNN`；测试 ID 只用于 smoke，不进入正式实验排名。NAME 只允许小写字母、数字和连字符，不得包含 AP 或结论。
 
 历史迁移映射只在 `docs/实验日志.md` 和 `tools/migrate_historical_runs.py` 中维护；不要恢复旧 `output*` 目录或创建兼容软链接。
 
 ## 运行安全规则
 
-- 新训练发现目标目录非空会报错，不要绕过。
+- 普通非 resume 训练发现规范目标目录非空时会打印绝对路径并正常退出，不会改写原结果；未完成实验必须显式使用 `--resume`。
 - `--resume` 只允许在已有规范目录中使用，且 `last_checkpoint` 必须指向现有检查点。
 - `--eval-only` 不能与 `--resume` 同时使用。
 - 评估必须通过命令行显式指定 `MODEL.WEIGHTS`，文件名只允许 `model_final.pth`、`model_latest.pth` 或 `model_best.pth`。
@@ -102,11 +109,18 @@ runs/<DATASET>/<ID>__<NAME>/
 - `SOLVER.CHECKPOINT_RETENTION=latest` 会周期性覆盖 `model_latest.pth`；启用 `TEST.BEST_CHECKPOINT` 时按验证指标覆盖 `model_best.pth`，`last_checkpoint` 仍必须指向 latest 以用于续训。
 - 不修改历史 `config.yaml`、`log.txt`、`metrics.json` 和权重；运行清单使用 schema v2 的 `description` 汇总说明，新结论写入实验日志。
 
-新实验训练（先创建并校验新的 `sar-007` 配置）：
+正式训练必须在当前修改形成 Git commit 后逐个启动，不使用自动串行队列。先运行 `sar-015`：
 
 ```bash
 python train_net.py --num-gpus 1 \
-  --config-file configs/experiments/sar_ship/<sar-007-new-experiment>.yaml
+  --config-file configs/experiments/sar_ship/sar-015-under10m-repvit-full-seed40244023.yaml
+```
+
+待 `sar-015` 完成并人工检查结果后，再决定是否运行 `sar-016`：
+
+```bash
+python train_net.py --num-gpus 1 \
+  --config-file configs/experiments/sar_ship/sar-016-under10m-timm-mnv4-full-seed40244023.yaml
 ```
 
 标准复评：
@@ -133,7 +147,7 @@ EXPERIMENT:
 
 `DESCRIPTION` 是不参与运行逻辑的可选自由文本，建议简要写明对照实验、主要改动、目的和重要限制。一次实验只验证一个假设；FPN/HIDDEN 等因结构兼容必须一起变化时，可作为一个“检测头宽度”概念因素，并在 `DESCRIPTION` 和日志中说明。不要在模型源码中按实验 ID 写条件分支；应新增语义清晰的配置开关并保持默认行为不变。
 
-推荐顺序：以 `sar-006` 为可信固定 256 基线 → 通道宽度 → backbone → proposal 数 → sample step → 输入尺度/裁剪 → 损失权重。
+当前顺序：先单独完成并分析 `sar-015`，再决定是否运行 `sar-016`；需要复现时另建从 `sar-017` 开始的新配置。若正式结果仍不满足目标，再以正式最佳结果为基线依次检查 proposal 数、sample step、输入尺度/裁剪和损失权重。
 
 ## 历史结果速查
 
@@ -146,19 +160,24 @@ EXPERIMENT:
 | `sar-004` | SAR | 20.58M | 57.61 | 延长训练后 milestones 未重算 |
 | `sar-005` | SAR | 34.46M | 58.84 | 固定种子但为 Batch 25、多尺度，不是 `sar-001` 严格复现 |
 | `sar-006` | SAR | 34.46M | 67.77 | 固定种子、Batch 25、固定 256；当前可重复基线 |
+| `sar-012` | SAR screening | 6.04M | 57.36 | 50k、单种子、未进入 LR milestones；正式候选 |
+| `sar-013` | SAR screening | 9.44M | 61.98 | 50k、单种子、未进入 LR milestones；正式候选 |
+| `sar-014` | SAR screening | 9.44M | 60.36 | 蒸馏低于无蒸馏学生，已淘汰 |
 | `panda-000` | PANDA | 110.67M | 13.24 | 四类别，不可与 SAR 横比 |
 
 最终指标优先读取 `metrics.json` 最后一条含 `bbox/AP` 的记录，并与 `log.txt` 复核。参数量来自实际评估权重的 `model` 状态字典。
 
 ## 修改位置
 
-- backbone：`diffusiondet/mobilenetv4.py`、`detectron2/modeling/backbone/resnet.py`
+- backbone：`diffusiondet/mobilenetv4.py`、`diffusiondet/timm_backbone.py`、`detectron2/modeling/backbone/resnet.py`
 - FPN：`detectron2/modeling/backbone/fpn.py`
 - 检测器/采样：`diffusiondet/detector.py`
 - 动态头：`diffusiondet/head.py`
 - 损失：`diffusiondet/loss.py`
 - 数据映射和增强：`diffusiondet/dataset_mapper.py`
 - 实验安全规则：`experiment_manager.py`
+- 分层筛选：`tools/run_under10m_screening.py`、`tools/run_under10m_remaining_screening.py`
+- 正式配置：`configs/experiments/sar_ship/sar-015-under10m-repvit-full-seed40244023.yaml`、`sar-016-under10m-timm-mnv4-full-seed40244023.yaml`
 - 数据注册：`diffusiondet/datasets.py`
 
 完成实验或修正关键事实后，更新 `docs/实验日志.md`；若影响上手方式，同时更新交接指南和 README。
@@ -168,7 +187,7 @@ EXPERIMENT:
 静态验证：
 
 ```bash
-python3 -m unittest tests.test_experiment -v
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 python3 tools/validate_experiment_configs.py
 python3 tools/migrate_historical_runs.py --verify
 git diff --check

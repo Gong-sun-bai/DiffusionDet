@@ -7,6 +7,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import math
 import random
+from pathlib import Path
 from typing import List
 from collections import namedtuple
 
@@ -21,7 +22,11 @@ from detectron2.structures import Boxes, ImageList, Instances
 
 from .loss import SetCriterionDynamicK, HungarianMatcherDynamicK
 from .head import DynamicHead
-from .util.box_ops import box_cxcywh_to_xyxy, box_xyxy_to_cxcywh
+from .util.box_ops import (
+    aligned_generalized_box_iou,
+    box_cxcywh_to_xyxy,
+    box_xyxy_to_cxcywh,
+)
 from .util.misc import nested_tensor_from_tensor_list
 
 __all__ = ["DiffusionDet"]
@@ -75,6 +80,16 @@ class DiffusionDet(nn.Module):
         self.num_proposals = cfg.MODEL.DiffusionDet.NUM_PROPOSALS
         self.hidden_dim = cfg.MODEL.DiffusionDet.HIDDEN_DIM
         self.num_heads = cfg.MODEL.DiffusionDet.NUM_HEADS
+        inference_head_stage = int(cfg.MODEL.DiffusionDet.INFERENCE_HEAD_STAGE)
+        if inference_head_stage == -1:
+            self.inference_head_index = -1
+        elif 1 <= inference_head_stage <= self.num_heads:
+            self.inference_head_index = inference_head_stage - 1
+        else:
+            raise ValueError(
+                "MODEL.DiffusionDet.INFERENCE_HEAD_STAGE must be -1 or in "
+                f"[1, {self.num_heads}], got {inference_head_stage}"
+            )
 
         # Build Backbone.
         self.backbone = build_backbone(cfg)
@@ -94,11 +109,25 @@ class DiffusionDet(nn.Module):
         self.sampling_timesteps = default(sampling_timesteps, timesteps)
         assert self.sampling_timesteps <= timesteps
         self.is_ddim_sampling = self.sampling_timesteps < timesteps
-        self.ddim_sampling_eta = 1.
+        self.ddim_sampling_eta = float(cfg.MODEL.DiffusionDet.DDIM_ETA)
         self.self_condition = False
         self.scale = cfg.MODEL.DiffusionDet.SNR_SCALE
-        self.box_renewal = True
-        self.use_ensemble = True
+        self.box_renewal = bool(cfg.MODEL.DiffusionDet.BOX_RENEWAL)
+        self.renewal_threshold = float(cfg.MODEL.DiffusionDet.RENEWAL_THRESHOLD)
+        self.ensemble_mode = str(cfg.MODEL.DiffusionDet.ENSEMBLE_MODE)
+        if self.ensemble_mode not in {
+            "legacy_nonfinal",
+            "final_only",
+            "all_steps",
+        }:
+            raise ValueError(
+                "MODEL.DiffusionDet.ENSEMBLE_MODE must be legacy_nonfinal, "
+                f"final_only, or all_steps; got {self.ensemble_mode!r}"
+            )
+        self.use_ensemble = self.ensemble_mode in {
+            "legacy_nonfinal",
+            "all_steps",
+        }
 
         self.register_buffer('betas', betas)
         self.register_buffer('alphas_cumprod', alphas_cumprod)
@@ -139,6 +168,21 @@ class DiffusionDet(nn.Module):
         self.use_fed_loss = cfg.MODEL.DiffusionDet.USE_FED_LOSS
         self.use_nms = cfg.MODEL.DiffusionDet.USE_NMS
 
+        distillation = cfg.MODEL.DiffusionDet.DISTILLATION
+        self.distillation_enabled = bool(distillation.ENABLED)
+        self.distillation_teacher_weights = str(distillation.TEACHER_WEIGHTS)
+        self.distillation_confidence_threshold = float(
+            distillation.CONFIDENCE_THRESHOLD
+        )
+        self.distillation_temperature = float(distillation.TEMPERATURE)
+        self.distillation_cls_weight = float(distillation.CLS_WEIGHT)
+        self.distillation_l1_weight = float(distillation.L1_WEIGHT)
+        self.distillation_giou_weight = float(distillation.GIOU_WEIGHT)
+        self.__dict__["_distillation_teacher"] = None
+        self.__dict__["_distillation_teacher_cfg"] = (
+            self._teacher_cfg(cfg) if self.distillation_enabled else None
+        )
+
         # Build Criterion.
         matcher = HungarianMatcherDynamicK(
             cfg=cfg, cost_class=class_weight, cost_bbox=l1_weight, cost_giou=giou_weight, use_focal=self.use_focal
@@ -161,6 +205,83 @@ class DiffusionDet(nn.Module):
         self.normalizer = lambda x: (x - pixel_mean) / pixel_std
         self.to(self.device)
 
+    @staticmethod
+    def _teacher_cfg(cfg):
+        teacher_cfg = cfg.clone()
+        teacher_cfg.defrost()
+        teacher_cfg.MODEL.WEIGHTS = ""
+        teacher_cfg.MODEL.BACKBONE.NAME = "build_resnet_fpn_backbone"
+        teacher_cfg.MODEL.RESNETS.DEPTH = 18
+        teacher_cfg.MODEL.RESNETS.STRIDE_IN_1X1 = False
+        teacher_cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
+        teacher_cfg.MODEL.RESNETS.OUT_FEATURES = ["res2", "res3", "res4", "res5"]
+        teacher_cfg.MODEL.FPN.IN_FEATURES = ["res2", "res3", "res4", "res5"]
+        teacher_cfg.MODEL.FPN.OUT_CHANNELS = 128
+        teacher_cfg.MODEL.DiffusionDet.HIDDEN_DIM = 128
+        teacher_cfg.MODEL.DiffusionDet.NUM_HEADS = 6
+        teacher_cfg.MODEL.DiffusionDet.HEAD_SHARING = "none"
+        teacher_cfg.MODEL.DiffusionDet.INFERENCE_HEAD_STAGE = -1
+        teacher_cfg.MODEL.DiffusionDet.DISTILLATION.ENABLED = False
+        teacher_cfg.freeze()
+        return teacher_cfg
+
+    def _get_distillation_teacher(self):
+        teacher = self.__dict__.get("_distillation_teacher")
+        if teacher is not None:
+            return teacher
+        weights = Path(self.distillation_teacher_weights).expanduser()
+        if not weights.is_file():
+            raise FileNotFoundError(
+                f"distillation teacher checkpoint does not exist: {weights}"
+            )
+        from detectron2.checkpoint import DetectionCheckpointer
+
+        teacher = DiffusionDet(self.__dict__["_distillation_teacher_cfg"])
+        DetectionCheckpointer(teacher).resume_or_load(str(weights.resolve()), resume=False)
+        teacher.eval()
+        teacher.requires_grad_(False)
+        self.__dict__["_distillation_teacher"] = teacher
+        return teacher
+
+    def _distillation_losses(
+        self,
+        student_class,
+        student_boxes,
+        teacher_class,
+        teacher_boxes,
+        images_whwh,
+    ):
+        teacher_prob = torch.sigmoid(teacher_class)
+        confidence = teacher_prob.amax(dim=-1)
+        mask = confidence >= self.distillation_confidence_threshold
+        if not bool(mask.any()):
+            zero = student_class.sum() * 0.0
+            return {
+                "loss_kd_cls": zero,
+                "loss_kd_bbox": zero,
+                "loss_kd_giou": zero,
+            }
+
+        temperature = self.distillation_temperature
+        cls_loss = F.binary_cross_entropy_with_logits(
+            student_class[mask] / temperature,
+            teacher_prob[mask],
+        ) * (temperature ** 2)
+        scale = images_whwh[:, None, :].expand_as(student_boxes)
+        student_normalized = student_boxes / scale
+        teacher_normalized = teacher_boxes / scale
+        student_selected = student_normalized[mask]
+        teacher_selected = teacher_normalized[mask]
+        l1_loss = F.l1_loss(student_selected, teacher_selected)
+        giou_loss = 1.0 - aligned_generalized_box_iou(
+            student_selected, teacher_selected
+        ).mean()
+        return {
+            "loss_kd_cls": cls_loss * self.distillation_cls_weight,
+            "loss_kd_bbox": l1_loss * self.distillation_l1_weight,
+            "loss_kd_giou": giou_loss * self.distillation_giou_weight,
+        }
+
     def predict_noise_from_start(self, x_t, t, x0):
         return (
                 (extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t - x0) /
@@ -173,6 +294,10 @@ class DiffusionDet(nn.Module):
         x_boxes = box_cxcywh_to_xyxy(x_boxes)
         x_boxes = x_boxes * images_whwh[:, None, :]
         outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t, None)
+
+        if not self.training and self.inference_head_index != -1:
+            outputs_class = outputs_class[self.inference_head_index][None]
+            outputs_coord = outputs_coord[self.inference_head_index][None]
 
         x_start = outputs_coord[-1]  # (batch, num_proposals, 4) predict boxes: absolute coordinates (x1, y1, x2, y2)
         x_start = x_start / images_whwh[:, None, :]
@@ -196,7 +321,11 @@ class DiffusionDet(nn.Module):
 
         img = torch.randn(shape, device=self.device)
 
-        ensemble_score, ensemble_label, ensemble_coord = [], [], []
+        ensemble_score = [[] for _ in range(batch)]
+        ensemble_label = [[] for _ in range(batch)]
+        ensemble_coord = [[] for _ in range(batch)]
+        final_outputs_class = None
+        final_outputs_coord = None
         x_start = None
         for time, time_next in time_pairs:
             time_cond = torch.full((batch,), time, device=self.device, dtype=torch.long)
@@ -205,18 +334,31 @@ class DiffusionDet(nn.Module):
             preds, outputs_class, outputs_coord = self.model_predictions(backbone_feats, images_whwh, img, time_cond,
                                                                          self_cond, clip_x_start=clip_denoised)
             pred_noise, x_start = preds.pred_noise, preds.pred_x_start
+            final_outputs_class = outputs_class
+            final_outputs_coord = outputs_coord
 
-            if self.box_renewal:  # filter
-                score_per_image, box_per_image = outputs_class[-1][0], outputs_coord[-1][0]
-                threshold = 0.5
-                score_per_image = torch.sigmoid(score_per_image)
-                value, _ = torch.max(score_per_image, -1, keepdim=False)
-                keep_idx = value > threshold
-                num_remain = torch.sum(keep_idx)
+            collect_step = (
+                self.sampling_timesteps > 1
+                and (
+                    self.ensemble_mode == "all_steps"
+                    or (
+                        self.ensemble_mode == "legacy_nonfinal"
+                        and time_next >= 0
+                    )
+                )
+            )
+            if collect_step:
+                raw_predictions = self.inference(
+                    outputs_class[-1],
+                    outputs_coord[-1],
+                    images.image_sizes,
+                    return_raw=True,
+                )
+                for image_index, (boxes, scores, labels) in enumerate(raw_predictions):
+                    ensemble_coord[image_index].append(boxes)
+                    ensemble_score[image_index].append(scores)
+                    ensemble_label[image_index].append(labels)
 
-                pred_noise = pred_noise[:, keep_idx, :]
-                x_start = x_start[:, keep_idx, :]
-                img = img[:, keep_idx, :]
             if time_next < 0:
                 img = x_start
                 continue
@@ -227,40 +369,70 @@ class DiffusionDet(nn.Module):
             sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
             c = (1 - alpha_next - sigma ** 2).sqrt()
 
-            noise = torch.randn_like(img)
+            if self.box_renewal:
+                next_images = []
+                scores = torch.sigmoid(outputs_class[-1]).amax(dim=-1)
+                for image_index in range(batch):
+                    keep = scores[image_index] > self.renewal_threshold
+                    kept_noise = pred_noise[image_index][keep]
+                    kept_start = x_start[image_index][keep]
+                    kept_count = int(keep.sum().item())
+                    noise = torch.randn_like(kept_start)
+                    updated = (
+                        kept_start * alpha_next.sqrt()
+                        + c * kept_noise
+                        + sigma * noise
+                    )
+                    replenish = torch.randn(
+                        self.num_proposals - kept_count,
+                        4,
+                        device=img.device,
+                        dtype=img.dtype,
+                    )
+                    next_images.append(torch.cat((updated, replenish), dim=0))
+                img = torch.stack(next_images)
+            else:
+                noise = torch.randn_like(img)
+                img = (
+                    x_start * alpha_next.sqrt()
+                    + c * pred_noise
+                    + sigma * noise
+                )
 
-            img = x_start * alpha_next.sqrt() + \
-                  c * pred_noise + \
-                  sigma * noise
-
-            if self.box_renewal:  # filter
-                # replenish with randn boxes
-                img = torch.cat((img, torch.randn(1, self.num_proposals - num_remain, 4, device=img.device)), dim=1)
-            if self.use_ensemble and self.sampling_timesteps > 1:
-                box_pred_per_image, scores_per_image, labels_per_image = self.inference(outputs_class[-1],
-                                                                                        outputs_coord[-1],
-                                                                                        images.image_sizes)
-                ensemble_score.append(scores_per_image)
-                ensemble_label.append(labels_per_image)
-                ensemble_coord.append(box_pred_per_image)
+        if final_outputs_class is None or final_outputs_coord is None:
+            raise RuntimeError("DDIM sampling produced no predictions")
 
         if self.use_ensemble and self.sampling_timesteps > 1:
-            box_pred_per_image = torch.cat(ensemble_coord, dim=0)
-            scores_per_image = torch.cat(ensemble_score, dim=0)
-            labels_per_image = torch.cat(ensemble_label, dim=0)
-            if self.use_nms:
-                keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
-                box_pred_per_image = box_pred_per_image[keep]
-                scores_per_image = scores_per_image[keep]
-                labels_per_image = labels_per_image[keep]
+            results = []
+            for image_index, image_size in enumerate(images.image_sizes):
+                if not ensemble_coord[image_index]:
+                    raise RuntimeError(
+                        f"ensemble mode {self.ensemble_mode!r} collected no predictions"
+                    )
+                box_pred_per_image = torch.cat(ensemble_coord[image_index], dim=0)
+                scores_per_image = torch.cat(ensemble_score[image_index], dim=0)
+                labels_per_image = torch.cat(ensemble_label[image_index], dim=0)
+                if self.use_nms:
+                    keep = batched_nms(
+                        box_pred_per_image,
+                        scores_per_image,
+                        labels_per_image,
+                        0.5,
+                    )
+                    box_pred_per_image = box_pred_per_image[keep]
+                    scores_per_image = scores_per_image[keep]
+                    labels_per_image = labels_per_image[keep]
 
-            result = Instances(images.image_sizes[0])
-            result.pred_boxes = Boxes(box_pred_per_image)
-            result.scores = scores_per_image
-            result.pred_classes = labels_per_image
-            results = [result]
+                result = Instances(image_size)
+                result.pred_boxes = Boxes(box_pred_per_image)
+                result.scores = scores_per_image
+                result.pred_classes = labels_per_image
+                results.append(result)
         else:
-            output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+            output = {
+                'pred_logits': final_outputs_class[-1],
+                'pred_boxes': final_outputs_coord[-1],
+            }
             box_cls = output["pred_logits"]
             box_pred = output["pred_boxes"]
             results = self.inference(box_cls, box_pred, images.image_sizes)
@@ -272,6 +444,7 @@ class DiffusionDet(nn.Module):
                 r = detector_postprocess(results_per_image, height, width)
                 processed_results.append({"instances": r})
             return processed_results
+        return results
 
     # forward diffusion
     def q_sample(self, x_start, t, noise=None):
@@ -332,6 +505,28 @@ class DiffusionDet(nn.Module):
             for k in loss_dict.keys():
                 if k in weight_dict:
                     loss_dict[k] *= weight_dict[k]
+            if self.distillation_enabled:
+                teacher = self._get_distillation_teacher()
+                with torch.no_grad():
+                    teacher_src = teacher.backbone(images.tensor)
+                    teacher_features = [
+                        teacher_src[name] for name in teacher.in_features
+                    ]
+                    teacher_class, teacher_coord = teacher.head(
+                        teacher_features,
+                        x_boxes,
+                        t,
+                        None,
+                    )
+                loss_dict.update(
+                    self._distillation_losses(
+                        outputs_class[-1],
+                        outputs_coord[-1],
+                        teacher_class[-1],
+                        teacher_coord[-1],
+                        images_whwh,
+                    )
+                )
             return loss_dict
 
     def prepare_diffusion_repeat(self, gt_boxes):
@@ -431,7 +626,7 @@ class DiffusionDet(nn.Module):
 
         return new_targets, torch.stack(diffused_boxes), torch.stack(noises), torch.stack(ts)
 
-    def inference(self, box_cls, box_pred, image_sizes):
+    def inference(self, box_cls, box_pred, image_sizes, return_raw=False):
         """
         Arguments:
             box_cls (Tensor): tensor of shape (batch_size, num_proposals, K).
@@ -446,6 +641,7 @@ class DiffusionDet(nn.Module):
         """
         assert len(box_cls) == len(image_sizes)
         results = []
+        raw_results = []
 
         if self.use_focal or self.use_fed_loss:
             scores = torch.sigmoid(box_cls)
@@ -461,8 +657,11 @@ class DiffusionDet(nn.Module):
                 box_pred_per_image = box_pred_per_image.view(-1, 1, 4).repeat(1, self.num_classes, 1).view(-1, 4)
                 box_pred_per_image = box_pred_per_image[topk_indices]
 
-                if self.use_ensemble and self.sampling_timesteps > 1:
-                    return box_pred_per_image, scores_per_image, labels_per_image
+                if return_raw:
+                    raw_results.append(
+                        (box_pred_per_image, scores_per_image, labels_per_image)
+                    )
+                    continue
 
                 if self.use_nms:
                     keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
@@ -482,8 +681,11 @@ class DiffusionDet(nn.Module):
             for i, (scores_per_image, labels_per_image, box_pred_per_image, image_size) in enumerate(zip(
                     scores, labels, box_pred, image_sizes
             )):
-                if self.use_ensemble and self.sampling_timesteps > 1:
-                    return box_pred_per_image, scores_per_image, labels_per_image
+                if return_raw:
+                    raw_results.append(
+                        (box_pred_per_image, scores_per_image, labels_per_image)
+                    )
+                    continue
 
                 if self.use_nms:
                     keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
@@ -496,7 +698,7 @@ class DiffusionDet(nn.Module):
                 result.pred_classes = labels_per_image
                 results.append(result)
 
-        return results
+        return raw_results if return_raw else results
 
     def preprocess_image(self, batched_inputs):
         """
