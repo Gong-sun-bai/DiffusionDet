@@ -34,6 +34,7 @@ The installation instruction and usage are in [Getting Started with DiffusionDet
 - [RTX 2080 Ti 基线复现记录](docs/RTX2080Ti基线复现记录.md)
 - [项目交接与重启指南](docs/项目交接与重启指南.md)
 - [实验日志](docs/实验日志.md)
+- [DiffusionDet 网络结构与代码阅读指南](docs/DiffusionDet网络结构与代码阅读指南.md)
 - [Codex 项目上下文](AGENTS.md)
 
 当前工作站已创建 `Difdet` 环境，完成 Batch 16、20 iter 的 `sar-test-001`
