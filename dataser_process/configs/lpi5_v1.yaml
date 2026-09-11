@@ -1,0 +1,32 @@
+# 单位显式使用 Hz、秒、采样点；所有相对路径以仓库根目录解析。
+schema_version: 1
+seed: 40244023
+output: LPI_COCO
+snr_db: [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+splits:
+  train: {scenes: 3240, negatives: 3960}
+  val: {scenes: 810, negatives: 990}
+  test: {scenes: 4050, negatives: 4950}
+signal:
+  fs_hz: 600000000
+  duration_s: 0.0001
+  carrier_hz: [-120000000, 120000000]
+  pulse_s: [0.000020, 0.000045]
+  margin_s: 0.000002
+  bandwidth_hz: [10000000, 60000000]
+  bfsk_spacing_hz: [8000000, 40000000]
+  nlfm_curvature: [0.35, 0.85]
+  code_lengths: [16, 36, 64]
+  frank_orders: [4, 6, 8]
+stft:
+  window: 256
+  hop: 96
+  nfft: 1024
+  image_size: 640
+  db_range: [-60, 6]
+annotation:
+  quantiles: [0.005, 0.995]
+  padding_px: 1
+  overlap_min: 0.20
+  max_attempts: 200
+  support_energy: 0.99

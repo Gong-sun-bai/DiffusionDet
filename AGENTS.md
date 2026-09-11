@@ -54,6 +54,13 @@ python -c "import detectron2; from detectron2 import _C; print(detectron2.__file
 
 ## 数据集
 
+新增五类雷达时频仿真工具位于 `dataser_process/`，说明与一键生成命令见
+`dataser_process/雷达信号仿真数据集说明.md`。默认输出 `LPI_COCO/`，不提交数据。
+设计为 99,000 张、LFM/NLFM/BPSK/BFSK/Frank 五类、−10～10 dB 共 11 档 SNR，
+train/val/test=39600/9900/49500，含 10% 纯噪声。2026-09-11 已验证脚本和独立预览，
+尚未生成全量或接入训练。纯噪声不赋 SNR；虚警率按纯噪声观测窗 FP/(FP+TN) 统计，
+不能混用错误框数与负图片数。生成器使用 `Difdet` 的 Python 与 CPU，不使用 YOLO 环境。
+
 实际本地目录：
 
 - `SAR_COCO_ship/`：31,783 张训练图、7,946 张验证图，单类 `ship`；

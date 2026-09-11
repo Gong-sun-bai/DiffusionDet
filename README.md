@@ -29,6 +29,12 @@ The installation instruction and usage are in [Getting Started with DiffusionDet
 
 ## 本地实验工作流
 
+五类雷达信号仿真数据生成入口为 `dataser_process/generate_lpi_dataset.py`。
+默认生成 99,000 张 LFM/NLFM/BPSK/BFSK/Frank 时频图，覆盖 −10～10 dB 的 11 档 SNR，
+输出同源 COCO/YOLO 标注到与现有数据集并列的 `LPI_COCO/`。
+一键生成、独立预览、断点续生成和评价口径见
+[雷达信号仿真数据集说明](dataser_process/雷达信号仿真数据集说明.md)。当前已验证脚本及独立预览，尚未生成全量数据或接入五模型训练。
+
 本仓库的 SAR/PANDA 研究分支使用严格的实验元数据和自动输出目录。开始工作前请先阅读：
 
 - [RTX 2080 Ti 基线复现记录](docs/RTX2080Ti基线复现记录.md)
