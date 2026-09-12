@@ -35,6 +35,48 @@ EXPECTED_HISTORICAL_IDS = {
 EXPECTED_SAR_TEST_IDS = {"sar-test-001"}
 STANDALONE_HISTORICAL_IDS = {f"sar-{index:03d}" for index in range(5)}
 
+YOLO_SAR_CONFIG_ROOT = REPOSITORY_ROOT / "configs" / "yolo" / "sar_ship"
+YOLO_SAR_DATASET_CONFIG = YOLO_SAR_CONFIG_ROOT / "sar_ship.yaml"
+YOLO_SAR_EXPERIMENTS = {
+    "yolo-sar-001": {
+        "filename": "yolo-sar-001-yolo26n-pretrained.yaml",
+        "model": "yolo26n.pt",
+        "name": "yolo-sar-001__yolo26n-pretrained-img256-bs25-ep200-seed40244023",
+    },
+    "yolo-sar-002": {
+        "filename": "yolo-sar-002-yolo11n-pretrained.yaml",
+        "model": "yolo11n.pt",
+        "name": "yolo-sar-002__yolo11n-pretrained-img256-bs25-ep200-seed40244023",
+    },
+    "yolo-sar-003": {
+        "filename": "yolo-sar-003-yolov8n-pretrained.yaml",
+        "model": "yolov8n.pt",
+        "name": "yolo-sar-003__yolov8n-pretrained-img256-bs25-ep200-seed40244023",
+    },
+}
+YOLO_SAR_COMMON_EXPECTATIONS = {
+    "task": "detect",
+    "mode": "train",
+    "data": "configs/yolo/sar_ship/sar_ship.yaml",
+    "epochs": 200,
+    "patience": 0,
+    "batch": 25,
+    "imgsz": 256,
+    "device": 0,
+    "workers": 4,
+    "project": "runs/yolo/sar_ship",
+    "exist_ok": False,
+    "pretrained": True,
+    "optimizer": "auto",
+    "seed": 40244023,
+    "deterministic": True,
+    "amp": False,
+    "multi_scale": 0.0,
+    "val": True,
+    "save_json": True,
+    "max_det": 100,
+}
+
 HISTORICAL_EXPECTATIONS = {
     "sar-000": {
         "MODEL.WEIGHTS": "detectron2://ImageNetPretrained/torchvision/R-50.pkl",
@@ -368,6 +410,88 @@ def main() -> int:
         except Exception as error:
             errors.append(f"{relative}: {error}")
 
+    yolo_ids = set()
+    yolo_reference = None
+    try:
+        dataset_config = load_yaml(YOLO_SAR_DATASET_CONFIG)
+        expected_dataset_config = {
+            "train": "../../../SAR_COCO_ship/yolo/images/train2017",
+            "val": "../../../SAR_COCO_ship/yolo/images/val2017",
+            "names": {0: "ship"},
+        }
+        if dataset_config != expected_dataset_config:
+            raise ValueError(
+                "SAR YOLO 数据配置必须使用仓库相对路径，并且只定义类别 0=ship。"
+            )
+    except Exception as error:
+        errors.append(
+            f"{YOLO_SAR_DATASET_CONFIG.relative_to(root)}: {error}"
+        )
+
+    expected_yolo_files = {
+        value["filename"] for value in YOLO_SAR_EXPERIMENTS.values()
+    }
+    actual_yolo_files = {
+        path.name
+        for path in YOLO_SAR_CONFIG_ROOT.glob("*.yaml")
+        if path != YOLO_SAR_DATASET_CONFIG
+    }
+    if actual_yolo_files != expected_yolo_files:
+        errors.append(
+            "YOLO SAR 实验配置集合不完整："
+            f"expected={sorted(expected_yolo_files)}, "
+            f"actual={sorted(actual_yolo_files)}"
+        )
+
+    for experiment_id, expected in YOLO_SAR_EXPERIMENTS.items():
+        path = YOLO_SAR_CONFIG_ROOT / expected["filename"]
+        relative = path.relative_to(root)
+        try:
+            config = load_yaml(path)
+            actual_id = str(config.get("name", "")).partition("__")[0]
+            if actual_id != experiment_id:
+                raise ValueError(
+                    f"输出目录中的实验 ID 应为 {experiment_id!r}，实际为 {actual_id!r}。"
+                )
+            if actual_id in yolo_ids:
+                raise ValueError(f"YOLO 实验 ID 重复：{actual_id}")
+            yolo_ids.add(actual_id)
+            if config.get("model") != expected["model"]:
+                raise ValueError(
+                    f"预训练权重应为 {expected['model']!r}，"
+                    f"实际为 {config.get('model')!r}。"
+                )
+            if config.get("name") != expected["name"]:
+                raise ValueError(
+                    f"输出目录名应为 {expected['name']!r}，"
+                    f"实际为 {config.get('name')!r}。"
+                )
+            for key, expected_value in YOLO_SAR_COMMON_EXPECTATIONS.items():
+                if config.get(key) != expected_value:
+                    raise ValueError(
+                        f"统一训练参数不一致：{key} expected={expected_value!r}, "
+                        f"actual={config.get(key)!r}"
+                    )
+
+            comparable = {
+                key: value
+                for key, value in config.items()
+                if key not in {"model", "name"}
+            }
+            if yolo_reference is None:
+                yolo_reference = comparable
+            elif comparable != yolo_reference:
+                raise ValueError("三份 YOLO 配置除 model/name 外必须完全一致。")
+        except Exception as error:
+            errors.append(f"{relative}: {error}")
+
+    if yolo_ids != set(YOLO_SAR_EXPERIMENTS):
+        errors.append(
+            "YOLO SAR 实验编号不符合预期："
+            f"expected={sorted(YOLO_SAR_EXPERIMENTS)}, "
+            f"actual={sorted(yolo_ids)}"
+        )
+
     missing_historical_ids = EXPECTED_HISTORICAL_IDS - set(ids)
     if missing_historical_ids:
         errors.append(
@@ -393,6 +517,12 @@ def main() -> int:
             f"actual={sorted(sar_test_ids)}"
         )
 
+    try:
+        from tools.lpi_config_validation import validate_lpi_configs
+        validate_lpi_configs(root)
+    except Exception as error:
+        errors.append(f"LPI 配置验证失败：{error}")
+
     if errors:
         print("静态配置验证失败：", file=sys.stderr)
         for error in errors:
@@ -400,7 +530,8 @@ def main() -> int:
         return 1
     print(
         f"静态配置验证通过：解析 {len(yaml_files)} 个 YAML，"
-        f"检查 {len(ids)} 个实验 ID。"
+        f"检查 {len(ids)} 个 DiffusionDet 实验 ID 和 "
+        f"{len(yolo_ids) + 3} 个 YOLO 实验 ID（含 3 个 LPI）。"
     )
     return 0
 

@@ -1,0 +1,36 @@
+# LPI 五类完整实验；正式训练前先执行独立 smoke。
+_BASE_: ../sar_ship/sar-016-under10m-timm-mnv4-full-seed40244023.yaml
+EXPERIMENT:
+  ID: lpi-002
+  NAME: timm-mnv4-shared-img640-bs24-ep200-seed40244023
+  DATASET: lpi
+  DESCRIPTION: 沿用 sar-016 结构及 ImageNet backbone 预训练；LPI 五类、640 输入、无增强、保留纯噪声，200 epoch；非
+    SAR 权重迁移。
+  OUTPUT_ROOT: ./runs
+DATASETS:
+  TRAIN: ("lpi_train",)
+  TEST: ("lpi_val",)
+DATALOADER:
+  NUM_WORKERS: 4
+  FILTER_EMPTY_ANNOTATIONS: false
+INPUT:
+  MIN_SIZE_TRAIN: (640,)
+  MAX_SIZE_TRAIN: 640
+  MIN_SIZE_TEST: 640
+  MAX_SIZE_TEST: 640
+  RANDOM_FLIP: none
+  CROP:
+    ENABLED: false
+MODEL:
+  DiffusionDet:
+    NUM_CLASSES: 5
+SOLVER:
+  IMS_PER_BATCH: 24
+  BASE_LR: 3.36e-05
+  MAX_ITER: 330000
+  STEPS: (231000, 297000)
+  WARMUP_ITERS: 1042
+  CHECKPOINT_PERIOD: 8250
+TEST:
+  EVAL_PERIOD: 8250
+SEED: 40244023

@@ -1,0 +1,10 @@
+path: /home/troy/workspace/DiffusionDet/LPI_COCO
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: LFM
+  1: NLFM
+  2: BPSK
+  3: BFSK
+  4: Frank

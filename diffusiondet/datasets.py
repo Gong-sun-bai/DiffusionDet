@@ -7,6 +7,9 @@ from detectron2.data.datasets import register_coco_instances
 
 
 DATASETS = {
+    "lpi_train": ("LPI_COCO/annotations/instances_train.json", "LPI_COCO"),
+    "lpi_val": ("LPI_COCO/annotations/instances_val.json", "LPI_COCO"),
+    "lpi_test": ("LPI_COCO/annotations/instances_test.json", "LPI_COCO"),
     "sar_ship_train": (
         "SAR_COCO_ship/annotations/instances_train2017.json",
         "SAR_COCO_ship/train2017",
@@ -27,7 +30,7 @@ DATASETS = {
 
 
 def register_project_datasets(repository_root):
-    """Register SAR and PANDA datasets once using absolute local paths."""
+    """Register SAR, PANDA and LPI datasets using absolute local paths."""
     repository_root = Path(repository_root).resolve()
     registered = set(DatasetCatalog.list())
     for name, (json_relpath, image_relpath) in DATASETS.items():

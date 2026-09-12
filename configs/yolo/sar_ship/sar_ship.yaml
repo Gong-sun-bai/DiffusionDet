@@ -1,0 +1,7 @@
+# Ultralytics YOLO 数据集描述；images 下使用不复制图片内容的硬链接。
+# 不设置 path，使 train/val 相对本文件所在目录解析，避免写入本机绝对路径。
+train: ../../../SAR_COCO_ship/yolo/images/train2017
+val: ../../../SAR_COCO_ship/yolo/images/val2017
+
+names:
+  0: ship

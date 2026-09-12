@@ -37,7 +37,11 @@ def build_transform_gen(cfg, is_train):
     logger = logging.getLogger(__name__)
     tfm_gens = []
     if is_train:
-        tfm_gens.append(T.RandomFlip())
+        flip = cfg.INPUT.RANDOM_FLIP
+        if flip not in {"none", "horizontal", "vertical"}:
+            raise ValueError(f"Unsupported INPUT.RANDOM_FLIP: {flip}")
+        if flip != "none":
+            tfm_gens.append(T.RandomFlip(horizontal=flip == "horizontal", vertical=flip == "vertical"))
     # ResizeShortestEdge
     tfm_gens.append(T.ResizeShortestEdge(min_size, max_size, sample_style))
 

@@ -33,7 +33,7 @@ The installation instruction and usage are in [Getting Started with DiffusionDet
 默认生成 99,000 张 LFM/NLFM/BPSK/BFSK/Frank 时频图，覆盖 −10～10 dB 的 11 档 SNR，
 输出同源 COCO/YOLO 标注到与现有数据集并列的 `LPI_COCO/`。
 一键生成、独立预览、断点续生成和评价口径见
-[雷达信号仿真数据集说明](dataser_process/雷达信号仿真数据集说明.md)。当前已验证脚本及独立预览，尚未生成全量数据或接入五模型训练。
+[雷达信号仿真数据集说明](dataser_process/雷达信号仿真数据集说明.md)。2026-09-12 正式全量 99,000 张图片、237,600 个框已通过只读核验，尚未接入五模型训练；实际检查结果见说明第 10 节。
 
 本仓库的 SAR/PANDA 研究分支使用严格的实验元数据和自动输出目录。开始工作前请先阅读：
 
@@ -158,3 +158,14 @@ If you use DiffusionDet in your research or wish to refer to the baseline result
       year={2022}
 }
 ```
+
+## LPI 五类雷达检测
+
+已提供 RepViT-M0.9、MobileNetV4-Conv-Small、YOLO26n、YOLO11n、YOLOv8n 的独立配置与训练/分 SNR 评价入口。默认固定 640、200 epoch、保留纯噪声；本机容量测试后的 Batch 依次为 16/24/72/80/96；正式训练尚未启动。五模型全部命令和评价口径见 [实验日志第 5.8 节](docs/实验日志.md#58-lpi-五类雷达五模型一键训练与分-snr-验证)。
+
+```bash
+bash tools/train_lpi.sh lpi-001
+bash tools/evaluate_lpi.sh lpi-001
+```
+
+允许先训练验证再提交；训练自动保存源码快照与 Git 状态（可用 `--require-clean-git` 启用严格检查）。验证自动完成验证集选阈值、测试集推理及逐 SNR/逐类报告。4,950 个测试噪声窗零虚警仍不能证明 Pfa < 10⁻⁶，报告同时提供单侧 95% 上限。
